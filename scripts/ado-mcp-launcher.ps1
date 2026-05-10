@@ -137,6 +137,28 @@ if ($authentication -eq "azcli") {
     }
 }
 
+$dockerImage = Get-StringValue -Object $userConfig -Name "dockerImage"
+
+if (-not [string]::IsNullOrWhiteSpace($dockerImage)) {
+    # Docker stdio mode: pass org and context as env vars; project/team forwarded from host
+    $dockerArgs = @(
+        "run", "-i", "--rm",
+        "-e", "ADO_ORG=$organization",
+        "-e", "ADO_AUTH=$authentication",
+        "-e", "AZURE_DEVOPS_EXT_PAT",
+        "-e", "ado_mcp_project=$project",
+        "-e", "ado_mcp_team=$team"
+    )
+    foreach ($domain in $domains) {
+        $dockerArgs += "-e"
+        $dockerArgs += "ADO_DOMAIN_$([string]$domain)=1"
+    }
+    $dockerArgs += $dockerImage
+
+    & docker @dockerArgs
+    exit $LASTEXITCODE
+}
+
 $npxArgs = @("-y", "@azure-devops/mcp", $organization, "--authentication", $authentication)
 foreach ($domain in $domains) {
     $npxArgs += "-d"

@@ -1,0 +1,11 @@
+services:
+  mcp:
+    build: .
+    stdin_open: true
+    tty: false
+    environment:
+      ADO_ORG: ${ADO_ORG}
+      ADO_AUTH: ${ADO_AUTH:-pat}
+      AZURE_DEVOPS_EXT_PAT: ${AZURE_DEVOPS_EXT_PAT}
+      ado_mcp_project: ${ado_mcp_project:-}
+      ado_mcp_team: ${ado_mcp_team:-}

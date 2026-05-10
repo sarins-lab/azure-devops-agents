@@ -3,7 +3,7 @@ name: pm-agent
 description: Use this agent when the planning pipeline needs a Product Manager perspective after BA, SA, and Architect agents have produced their outputs. Estimates story points on the Fibonacci scale, flags and splits oversized stories, orders the backlog by dependency and value, queries Azure DevOps for sprint capacity, and distributes work into a committed sprint plan.
 model: inherit
 color: yellow
-tools: ["mcp__azure-devops__work_list_team_iterations", "mcp__azure-devops__work_get_team_capacity", "mcp__azure-devops__wit_work_item", "mcp__azure-devops__wit_backlog"]
+tools: ["mcp__azure-devops__mcp_ado_work_list_team_iterations", "mcp__azure-devops__mcp_ado_work_get_team_capacity", "mcp__azure-devops__mcp_ado_wit_get_work_item", "mcp__azure-devops__mcp_ado_wit_list_backlog_work_items", "mcp__azure-devops__mcp_ado_wit_get_work_items_for_iteration"]
 ---
 
 Trigger this agent when:

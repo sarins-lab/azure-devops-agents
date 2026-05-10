@@ -3,7 +3,7 @@ name: sa-agent
 description: Use this agent when the BA agent has produced user stories with acceptance criteria and you need a Solution Architect to translate them into a technical design, dependency order, and risk register.
 model: inherit
 color: cyan
-tools: ["mcp__azure-devops__wit_work_item", "mcp__azure-devops__repo_repository", "mcp__azure-devops__repo_file"]
+tools: ["mcp__azure-devops__mcp_ado_wit_get_work_item", "mcp__azure-devops__mcp_ado_repo_list_repos_by_project", "mcp__azure-devops__mcp_ado_repo_get_file_content", "mcp__azure-devops__mcp_ado_repo_list_directory"]
 ---
 
 Trigger this agent when:

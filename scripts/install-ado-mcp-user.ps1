@@ -3,6 +3,7 @@ param(
     [string]$Organization,
     [string]$Authentication = "azcli",
     [string[]]$Domains = @(),
+    [string]$DockerImage = "",      # e.g. "ghcr.io/sarins-lab/azure-devops-mcp:latest"
     [switch]$ConfigureCodex,
     [switch]$ConfigureClaude,
     [switch]$ConfigureVSCode,
@@ -99,8 +100,8 @@ Run the full pipeline in order: BA → SA → Architect → PM.
 
 ### Traceability
 
-After creating any work item, verify the parent link with `wit_work_item`. Fix
-missing links with `wit_work_item_link_write`. Never leave a work item parentless.
+After creating any work item, verify the parent link with `mcp_ado_wit_get_work_item`. Fix
+missing links with `mcp_ado_wit_add_child_work_items`. Never leave a work item parentless.
 '@
 
 $copilotContextFile = @'
@@ -271,8 +272,10 @@ if ((Test-Path -LiteralPath $configTarget) -and -not $Force) {
 } else {
     $config = [ordered]@{ organization = $Organization; authentication = $Authentication }
     if ($Domains.Count -gt 0) { $config.domains = $Domains }
+    if (-not [string]::IsNullOrWhiteSpace($DockerImage)) { $config.dockerImage = $DockerImage }
     $config | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $configTarget -Encoding utf8
-    Write-Host "Wrote MCP config: $configTarget"
+    $mode = if ([string]::IsNullOrWhiteSpace($DockerImage)) { "npx (local)" } else { "Docker ($DockerImage)" }
+    Write-Host "Wrote MCP config [$mode]: $configTarget"
 }
 
 # Write Copilot context file (shared by VS Code; re-written on every install)

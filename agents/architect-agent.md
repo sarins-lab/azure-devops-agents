@@ -3,7 +3,7 @@ name: architect-agent
 description: Use this agent when the planning pipeline needs architecture governance applied to BA stories and SA technical designs. Produces ADRs, surfaces cross-cutting concerns as concrete story proposals, flags integration risks, and identifies architectural principle violations.
 model: inherit
 color: magenta
-tools: ["mcp__azure-devops__wiki", "mcp__azure-devops__wit_work_item"]
+tools: ["mcp__azure-devops__mcp_ado_wit_get_work_item", "mcp__azure-devops__mcp_ado_wiki_list_wikis", "mcp__azure-devops__mcp_ado_wiki_get_page", "mcp__azure-devops__mcp_ado_wiki_get_page_content"]
 ---
 
 Trigger this agent when:

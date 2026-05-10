@@ -1,7 +1,7 @@
 ---
 description: Create a single user story with Given/When/Then acceptance criteria, SA implementation notes, and a Fibonacci story point estimate in Azure DevOps.
 argument-hint: <story-description> [under feature <feature-id>]
-allowed-tools: ["mcp__azure-devops__wit_work_item", "mcp__azure-devops__wit_work_item_write", "mcp__azure-devops__wit_work_item_link_write", "mcp__azure-devops__work_list_team_iterations", "mcp__azure-devops__work_get_team_capacity"]
+allowed-tools: ["mcp__azure-devops__mcp_ado_wit_get_work_item", "mcp__azure-devops__mcp_ado_wit_add_child_work_items", "mcp__azure-devops__mcp_ado_work_list_team_iterations", "mcp__azure-devops__mcp_ado_work_get_team_capacity"]
 ---
 
 Create a single well-formed user story with acceptance criteria, SA implementation notes, and a story point estimate, then write it to Azure DevOps under the specified feature.
@@ -14,7 +14,7 @@ Create a single well-formed user story with acceptance criteria, SA implementati
 
 ### 1 — Load context
 
-If a feature ID is given, call `wit_work_item` with that ID to retrieve the feature and its parent epic for full context.
+If a feature ID is given, call `mcp_ado_wit_get_work_item` with that ID to retrieve the feature and its parent epic for full context.
 
 If no feature is specified, ask: *"Which feature does this story belong to? Provide the ADO feature ID."*
 
@@ -36,7 +36,7 @@ Use the **sa-agent** to add a one-paragraph implementation note.
 
 Use the **pm-agent** to:
 - Estimate story points (Fibonacci)
-- Recommend a sprint using `work_list_team_iterations` and `work_get_team_capacity`
+- Recommend a sprint using `mcp_ado_work_list_team_iterations` and `mcp_ado_work_get_team_capacity`
 - Flag if the story should be split
 
 **Pause.** Show the complete story card. Ask: *"Confirm to create in Azure DevOps."*
@@ -45,19 +45,19 @@ Use the **pm-agent** to:
 
 ### 4 — Create in ADO
 
-Call `wit_work_item_write` with `type: "User Story"` and fields:
+Call `mcp_ado_wit_add_child_work_items` with the feature ID as parent and fields:
 - `System.Title`
 - `Microsoft.VSTS.Common.AcceptanceCriteria`
 - `System.Description` (SA implementation note)
 - `Microsoft.VSTS.Scheduling.StoryPoints`
 - `System.IterationPath`
 
-Then call `wit_work_item_link_write` with `sourceId: <story-id>`, `targetId: <feature-id>`, `linkType: "System.LinkTypes.Hierarchy-Reverse"` to link the story to its parent feature.
+This creates the story and sets the parent link in one call.
 
 ---
 
 ### 5 — Verify and confirm
 
-Read back the created item with `wit_work_item` and confirm the parent link is present in the `relations` array.
+Read back the created item with `mcp_ado_wit_get_work_item` and confirm the parent link is present in the `relations` array.
 
 Construct the item URL from the ADO org and project in `.ado-mcp.json`: `https://dev.azure.com/<org>/<project>/_workitems/edit/<story-id>`
