@@ -23,6 +23,18 @@ Run `.\scripts\install-ado-mcp-user.ps1 -Organization <your-org>` once to config
 - `plan-feature` — Same pipeline scoped to one feature
 - `plan-story` — Single user story with AC, SA notes, and estimate
 
+## ADO field conventions
+
+| Type | Required fields |
+|------|----------------|
+| Feature | Title, Description (SA technical approach), Tags (feature area) |
+| User Story | Title, Acceptance Criteria (BA — Given/When/Then), Description (SA implementation notes + Architect concerns), Story Points, Iteration Path |
+| Task | Title, Description, Remaining Work (hours), Assigned To |
+
+## Traceability
+
+After creating any work item, verify the parent link by reading it back with `wit_work_item`. Fix missing links with `wit_work_item_link_write`. Never leave an item parentless.
+
 ## Repo config
 
 Add `.ado-mcp.json` to a repo to specify which ADO project it targets:
