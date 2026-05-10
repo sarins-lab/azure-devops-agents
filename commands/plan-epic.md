@@ -1,7 +1,7 @@
 ---
 description: Run the full BA → SA → Architect → PM planning pipeline for an epic. Creates all features, stories, and ADRs in Azure DevOps with full parent-child traceability.
 argument-hint: <epic-id or epic-description>
-allowed-tools: ["mcp__azure-devops__wit_work_item", "mcp__azure-devops__wit_work_item_write", "mcp__azure-devops__wit_work_item_link_write", "mcp__azure-devops__wiki", "mcp__azure-devops__work_list_team_iterations", "mcp__azure-devops__work_get_team_capacity", "mcp__azure-devops__wit_backlog"]
+allowed-tools: ["mcp__azure-devops__wit_work_item", "mcp__azure-devops__wit_work_item_write", "mcp__azure-devops__wit_work_item_link_write", "mcp__azure-devops__wiki", "mcp__azure-devops__wiki_upsert_page", "mcp__azure-devops__work_list_team_iterations", "mcp__azure-devops__work_get_team_capacity", "mcp__azure-devops__wit_backlog"]
 ---
 
 Run the full BA → SA → Architect → PM planning pipeline for an epic, then create all features, user stories, tasks, and ADRs in Azure DevOps with complete parent-child traceability.
@@ -14,7 +14,7 @@ Run the full BA → SA → Architect → PM planning pipeline for an epic, then 
 
 ### 1 — Load the epic
 
-If `$ARGUMENTS` is a number, call `wit_work_item` (action: `get`) to retrieve the epic title, description, and acceptance criteria. Use those as the input context for all agents.
+If `$ARGUMENTS` is a number, call `wit_work_item` with `id: <number>` to retrieve the epic title, description, and acceptance criteria. Use those as the input context for all agents.
 
 If `$ARGUMENTS` is a description, ask: *"Should I create a new Epic work item in ADO for this, or are you planning against an existing epic?"*
 
@@ -64,21 +64,22 @@ Pass to the agent: all prior outputs.
 
 Create in strict order (parents before children):
 
-1. **Features** — `wit_work_item_write` (action: `add_child`) under the epic
-2. **User Stories** — `wit_work_item_write` (action: `add_child`) under each feature with fields:
+1. **Features** — call `wit_work_item_write` with `type: "Feature"` and the required fields, then immediately call `wit_work_item_link_write` with `sourceId: <feature-id>`, `targetId: <epic-id>`, `linkType: "System.LinkTypes.Hierarchy-Reverse"` to set the parent.
+2. **User Stories** — call `wit_work_item_write` with `type: "User Story"` and fields:
    - `System.Title`
    - `Microsoft.VSTS.Common.AcceptanceCriteria`
    - `System.Description` (SA notes + Architect risks)
    - `Microsoft.VSTS.Scheduling.StoryPoints`
    - `System.IterationPath`
-3. **Cross-cutting stories** — `wit_work_item_write` (action: `add_child`) under the relevant feature
-4. **ADR wiki pages** — `wiki_upsert_page` under `/Architecture/ADRs/ADR-NNN-title`
+   Then call `wit_work_item_link_write` to link each story to its parent feature.
+3. **Cross-cutting stories** — same create+link pattern under the relevant feature.
+4. **ADR wiki pages** — call `wiki` with `action: "list"` to discover the wiki ID, then call `wiki_upsert_page` with `path: "/Architecture/ADRs/ADR-NNN-<slug>"` and the full Markdown content for each ADR.
 
 ---
 
 ### 7 — Verify traceability
 
-For every created work item call `wit_work_item` (action: `get`) and confirm the parent link is present. Fix any missing link immediately with `wit_work_item_link_write` (action: `link`).
+For every created work item call `wit_work_item` with its ID and confirm the `relations` array contains a parent link. If any link is missing, call `wit_work_item_link_write` immediately to fix it.
 
 ---
 
@@ -91,4 +92,4 @@ Print a completion table:
 | Feature | ... | #N | #epic | — | — |
 | Story | ... | #N | #feature | Sprint N | N |
 
-Epic URL: `https://dev.azure.com/sarins-lab/Platform/_workitems/edit/<id>`
+Construct the epic URL from the ADO organization and project configured in `.ado-mcp.json`: `https://dev.azure.com/<org>/<project>/_workitems/edit/<epic-id>`

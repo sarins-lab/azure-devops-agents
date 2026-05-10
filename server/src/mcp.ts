@@ -108,6 +108,19 @@ export function createServer(ado: AzureDevOpsClient): McpServer {
   );
 
   server.tool(
+    'wiki_upsert_page',
+    'Create or update a wiki page. Performs a GET to obtain the ETag then PUTs the new content.',
+    {
+      wikiId: z.string().describe('Wiki identifier'),
+      path: z.string().describe('Page path, e.g. /Architecture/ADRs/ADR-001-title'),
+      content: z.string().describe('Full Markdown content for the page'),
+      project: z.string().optional(),
+    },
+    async ({ wikiId, path, content, project }) =>
+      json(await ado.upsertWikiPage(wikiId, path, content, project))
+  );
+
+  server.tool(
     'repo_repository',
     'List or get Git repositories in the project.',
     {

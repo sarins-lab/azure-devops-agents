@@ -1,7 +1,7 @@
 ---
 description: Run the BA → SA → Architect → PM pipeline for a single feature. Decomposes it into stories, adds technical design and ADRs, estimates, and creates everything in Azure DevOps.
 argument-hint: <feature-id or feature-description> [under epic <epic-id>]
-allowed-tools: ["mcp__azure-devops__wit_work_item", "mcp__azure-devops__wit_work_item_write", "mcp__azure-devops__wit_work_item_link_write", "mcp__azure-devops__wiki", "mcp__azure-devops__work_list_team_iterations", "mcp__azure-devops__work_get_team_capacity", "mcp__azure-devops__wit_backlog"]
+allowed-tools: ["mcp__azure-devops__wit_work_item", "mcp__azure-devops__wit_work_item_write", "mcp__azure-devops__wit_work_item_link_write", "mcp__azure-devops__wiki", "mcp__azure-devops__wiki_upsert_page", "mcp__azure-devops__work_list_team_iterations", "mcp__azure-devops__work_get_team_capacity", "mcp__azure-devops__wit_backlog"]
 ---
 
 Run the BA → SA → Architect → PM pipeline scoped to a single feature and create all child user stories in Azure DevOps under the parent epic.
@@ -14,7 +14,7 @@ Run the BA → SA → Architect → PM pipeline scoped to a single feature and c
 
 ### 1 — Load context
 
-If `$ARGUMENTS` contains a feature ID, call `wit_work_item` (action: `get`) to retrieve the feature and its parent epic.
+If `$ARGUMENTS` contains a feature ID, call `wit_work_item` with that ID to retrieve the feature and its parent epic.
 
 If only a description is given, ask: *"Which epic does this feature belong to? Provide the ADO epic ID."*
 
@@ -62,15 +62,15 @@ Pass to the agent: all prior outputs.
 
 ### 6 — Create items in ADO
 
-1. If no ADO Feature exists yet, create it with `wit_work_item_write` (action: `create`) and link to the epic with `wit_work_item_link_write`
-2. Create each User Story as a child of the feature with `wit_work_item_write` (action: `add_child`)
-3. Create ADR wiki pages under `/Architecture/ADRs/`
+1. If no ADO Feature exists yet, call `wit_work_item_write` with `type: "Feature"` and the required fields, then call `wit_work_item_link_write` with `sourceId: <feature-id>`, `targetId: <epic-id>`, `linkType: "System.LinkTypes.Hierarchy-Reverse"` to set the parent.
+2. For each User Story, call `wit_work_item_write` with `type: "User Story"` and all required fields, then call `wit_work_item_link_write` to link it to the feature.
+3. For each ADR, call `wiki` with `action: "list"` to get the wiki ID, then call `wiki_upsert_page` with `path: "/Architecture/ADRs/ADR-NNN-<slug>"` and the Markdown content.
 
 ---
 
 ### 7 — Verify traceability
 
-Read back each item with `wit_work_item` (action: `get`) and confirm the parent link. Fix any missing links with `wit_work_item_link_write`.
+Read back each created item with `wit_work_item` and confirm a parent link exists in the `relations` array. Fix any missing links with `wit_work_item_link_write`.
 
 ---
 

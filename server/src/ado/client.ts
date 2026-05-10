@@ -143,8 +143,36 @@ export class AzureDevOpsClient {
   }
 
   getFile(repoId: string, path: string, ref?: string, project?: string): Promise<unknown> {
-    const q = new URLSearchParams({ 'api-version': API, path });
+    const q = new URLSearchParams({ 'api-version': API, path, includeContent: 'true' });
     if (ref) q.set('versionDescriptor.version', ref);
     return this.req(`${this.base}/${this.proj(project)}/_apis/git/repositories/${repoId}/items?${q}`);
+  }
+
+  // ── Wiki write ─────────────────────────────────────────────────────────────
+
+  async upsertWikiPage(wikiId: string, path: string, content: string, project?: string): Promise<unknown> {
+    const q = new URLSearchParams({ 'api-version': API, path });
+    const url = `${this.base}/${this.proj(project)}/_apis/wiki/wikis/${wikiId}/pages?${q}`;
+
+    // GET first to obtain the ETag needed for updates; absence means the page is new
+    let etag: string | undefined;
+    try {
+      const existing = await fetch(url, { headers: { Authorization: this.auth, Accept: 'application/json' } });
+      if (existing.ok) etag = existing.headers.get('ETag') ?? undefined;
+    } catch { /* page does not exist — proceed without ETag */ }
+
+    const headers: Record<string, string> = {
+      Authorization: this.auth,
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+    };
+    if (etag) headers['If-Match'] = etag;
+
+    const res = await fetch(url, { method: 'PUT', headers, body: JSON.stringify({ content }) });
+    if (!res.ok) {
+      const body = await res.text().catch(() => '');
+      throw new Error(`ADO ${res.status} ${res.statusText}: ${body}`);
+    }
+    return res.json();
   }
 }
