@@ -427,3 +427,8 @@ FodyWeavers.xsd
 *.msix
 *.msm
 *.msp
+
+# azure-devops-agents specific
+.ado-mcp.local.json
+.secrets
+*.local.json

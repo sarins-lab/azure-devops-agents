@@ -1,0 +1,10 @@
+{
+  "name": "azure-devops-agents",
+  "version": "1.0.0",
+  "description": "Multi-agent sprint planning pipeline (BA → SA → Architect → PM) that decomposes epics into fully traced, estimated user stories and ADRs in Azure DevOps.",
+  "author": {
+    "name": "Vivek Sarin",
+    "url": "https://github.com/vrsarin"
+  },
+  "mcpServers": {}
+}
