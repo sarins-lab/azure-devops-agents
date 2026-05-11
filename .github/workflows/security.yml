@@ -38,9 +38,11 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
 
-      - name: Run gitleaks (community fallback)
+      - name: Run gitleaks (v1 fallback without license)
         if: steps.gitleaks_license.outputs.has_license == 'false'
-        uses: zricethezav/gitleaks-action@v2.3.9
+        uses: gitleaks/gitleaks-action@v1.6.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   dependency-review:
     name: Dependency Review
@@ -78,6 +80,7 @@ jobs:
         if: always()
         with:
           sarif_file: trivy-fs.sarif
+          category: trivy-fs
 
       - name: Build local image for vulnerability scan
         run: docker build -t azure-devops-agents:ci ./docker
@@ -96,3 +99,4 @@ jobs:
         if: always()
         with:
           sarif_file: trivy-image.sarif
+          category: trivy-image
