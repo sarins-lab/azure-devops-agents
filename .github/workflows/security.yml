@@ -40,7 +40,7 @@ jobs:
 
       - name: Run gitleaks (v1 fallback without license)
         if: steps.gitleaks_license.outputs.has_license == 'false'
-        uses: gitleaks/gitleaks-action@v1.6.0
+        uses: gitleaks/gitleaks-action@v2.3.9
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
