@@ -221,6 +221,16 @@ bash ./scripts/deploy.sh
 
 By default, both deployment scripts run in dry-run mode. Pass `-Publish` on Windows or `--publish` on macOS/Linux only when you are ready to create and push release artifacts.
 
+## DevSecOps Controls
+
+The repository includes baseline DevSecOps checks through GitHub Actions:
+
+- Validate workflow for plugin and prompt metadata integrity
+- Security workflow for secret scanning, dependency review on pull requests, and Trivy vulnerability scanning
+- Docker workflow with SBOM and provenance attestations for published container images
+
+For stronger enforcement, protect the `main` branch and require successful checks from `Validate`, `Security`, and `Docker` before merge.
+
 ## License
 
 [MIT](LICENSE)
