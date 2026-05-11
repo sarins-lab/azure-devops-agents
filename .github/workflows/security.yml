@@ -21,15 +21,25 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Detect gitleaks license
+        id: gitleaks_license
+        shell: bash
+        run: |
+          if [ -n "${{ secrets.GITLEAKS_LICENSE }}" ]; then
+            echo "has_license=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_license=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Run gitleaks (official v2)
-        if: secrets.GITLEAKS_LICENSE != ''
+        if: steps.gitleaks_license.outputs.has_license == 'true'
         uses: gitleaks/gitleaks-action@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
 
       - name: Run gitleaks (community fallback)
-        if: secrets.GITLEAKS_LICENSE == ''
+        if: steps.gitleaks_license.outputs.has_license == 'false'
         uses: zricethezav/gitleaks-action@v2.3.9
 
   dependency-review:
