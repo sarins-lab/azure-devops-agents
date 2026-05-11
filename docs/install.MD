@@ -28,11 +28,11 @@ The launcher reads this file at runtime and injects the Azure DevOps project and
 
 ## Supported Clients
 
-| Client | Required for install | What gets configured |
-|--------|----------------------|----------------------|
-| Claude Code | `claude` CLI on `PATH` | MCP server, plugin marketplace, native plugin, global `CLAUDE.md` context |
-| VS Code Copilot | VS Code user settings directory and Copilot Chat | MCP server, Copilot instructions, prompt files |
-| Codex | Codex config directory; `codex` CLI recommended for verification | MCP server in `~/.codex/config.toml`, global `AGENTS.md` context |
+| Client          | Required for install                                             | What gets configured                                                      |
+| --------------- | ---------------------------------------------------------------- | ------------------------------------------------------------------------- |
+| Claude Code     | `claude` CLI on `PATH`                                           | MCP server, plugin marketplace, native plugin, global `CLAUDE.md` context |
+| VS Code Copilot | VS Code user settings directory and Copilot Chat                 | MCP server, Copilot instructions, prompt files                            |
+| Codex           | Codex config directory; `codex` CLI recommended for verification | MCP server in `~/.codex/config.toml`, global `AGENTS.md` context          |
 
 If the Claude CLI is missing, the installer still writes Claude context, but MCP registration and plugin install must be completed manually after Claude Code is installed.
 
@@ -263,14 +263,14 @@ Expected prompt files:
 
 ## Troubleshooting
 
-| Symptom | Likely cause | Fix |
-|---------|--------------|-----|
-| Claude context exists but slash commands do not | Claude CLI was not available during install | Install Claude Code, then rerun installer or run the manual Claude plugin commands |
-| Codex does not see the MCP server | Client was already running or config was not reloaded | Restart Codex and verify `codex mcp get azure-devops` |
-| VS Code does not show prompt files | Prompt directory not loaded yet | Restart VS Code and check `chat.promptFilesLocations` in user settings |
-| Docker mode starts but cannot authenticate | `ADO_MCP_AUTH_TOKEN` missing or invalid | Set a valid PAT and restart the client |
-| Work item creation works but fields are missing | Fields were attempted during create instead of update | Use `mcp_ado_wit_update_work_item` after creation |
-| Wiki ADR reading returns metadata only | Used `mcp_ado_wiki_get_page` alone | Call `mcp_ado_wiki_get_page_content` after `mcp_ado_wiki_get_page` |
+| Symptom                                         | Likely cause                                          | Fix                                                                                |
+| ----------------------------------------------- | ----------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| Claude context exists but slash commands do not | Claude CLI was not available during install           | Install Claude Code, then rerun installer or run the manual Claude plugin commands |
+| Codex does not see the MCP server               | Client was already running or config was not reloaded | Restart Codex and verify `codex mcp get azure-devops`                              |
+| VS Code does not show prompt files              | Prompt directory not loaded yet                       | Restart VS Code and check `chat.promptFilesLocations` in user settings             |
+| Docker mode starts but cannot authenticate      | `ADO_MCP_AUTH_TOKEN` missing or invalid               | Set a valid PAT and restart the client                                             |
+| Work item creation works but fields are missing | Fields were attempted during create instead of update | Use `mcp_ado_wit_update_work_item` after creation                                  |
+| Wiki ADR reading returns metadata only          | Used `mcp_ado_wiki_get_page` alone                    | Call `mcp_ado_wiki_get_page_content` after `mcp_ado_wiki_get_page`                 |
 
 ## Release Checklist
 
