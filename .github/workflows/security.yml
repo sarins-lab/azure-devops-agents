@@ -22,14 +22,14 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Run gitleaks (official v2)
-        if: ${{ secrets.GITLEAKS_LICENSE != '' }}
+        if: secrets.GITLEAKS_LICENSE != ''
         uses: gitleaks/gitleaks-action@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
 
       - name: Run gitleaks (community fallback)
-        if: ${{ secrets.GITLEAKS_LICENSE == '' }}
+        if: secrets.GITLEAKS_LICENSE == ''
         uses: zricethezav/gitleaks-action@v2.3.9
 
   dependency-review:
