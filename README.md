@@ -1,67 +1,120 @@
-# azure-devops-agents
+# Azure DevOps Planning Assistant
 
-A Claude Code plugin that runs a **BA → SA → Architect → PM multi-agent pipeline** to decompose epics into fully traced, estimated user stories and Architecture Decision Records, then creates everything in Azure DevOps.
+This project helps your AI coding tools turn planning conversations into well-structured Azure DevOps work items.
 
-## What this is
+After it is installed, you can describe work in plain English, such as:
 
-Most teams use an AI assistant as a single generalist. This plugin instead structures sprint planning as a chain of four specialists, each with a narrow role and explicit output contract that the next agent parses:
+> We need certificate rotation for internal services.
 
-| Agent | Role |
-|-------|------|
-| **BA** | Decomposes epics and features into user stories with Given/When/Then acceptance criteria, INVEST validation, and out-of-scope boundaries |
-| **SA** | Produces a feature-level technical design, per-story implementation notes, dependency-ordered build sequence, and a risk register |
-| **Architect** | Writes ADRs for significant decisions, audits 19 cross-cutting concerns (auth, mTLS, secrets, observability, resilience…), flags principle violations |
-| **PM** | Estimates story points on the Fibonacci scale, splits oversized stories, assigns work to sprints based on live team capacity from Azure DevOps |
+The assistant can then help break that idea into Azure DevOps Epics, Features, User Stories, acceptance criteria, technical notes, estimates, sprint suggestions, and Architecture Decision Records.
 
-Each command pauses for your confirmation at the end of each phase before proceeding.
+It works with:
 
-## Works with
+- Claude Code
+- VS Code with GitHub Copilot
+- OpenAI Codex
 
-- **Claude Code** (CLI and desktop)
-- **VS Code** (GitHub Copilot with MCP support)
-- **OpenAI Codex**
+## What It Does
 
-## Prerequisites
+The assistant follows the same planning process your delivery team would normally run:
 
-- [Azure CLI](https://learn.microsoft.com/en-us/cli/azure/install-azure-cli) installed and signed in
-- Node.js 18+ (for `npx @azure-devops/mcp`)
-- Claude Code, VS Code, or Codex
+| Step                | What happens                                                            |
+| ------------------- | ----------------------------------------------------------------------- |
+| Business analysis   | Turns an idea into clear user stories and acceptance criteria           |
+| Technical planning  | Adds implementation notes and service-level design details              |
+| Architecture review | Checks important risks and records architecture decisions               |
+| Sprint planning     | Estimates work, splits oversized stories, and suggests sprint placement |
 
-## Setup
+Nothing is created in Azure DevOps without confirmation. The assistant pauses after each major step so you can review, edit, or stop.
 
-### 1 — Sign in to Azure CLI
+## What You Get
+
+| Tool            | Result                                                |
+| --------------- | ----------------------------------------------------- |
+| Claude Code     | Full planning commands and specialist planning agents |
+| VS Code Copilot | Planning instructions and reusable planning prompts   |
+| Codex           | Planning instructions and `/plan-*` routing guidance  |
+
+You can use natural language, or you can use one of these planning routes. In Claude Code these are native slash commands. In VS Code Copilot and Codex, use the same text in chat or from the installed prompt files.
+
+| Command                       | Use it when                                                           |
+| ----------------------------- | --------------------------------------------------------------------- |
+| `/plan-epic <description>`    | You have a large initiative that needs to become features and stories |
+| `/plan-feature <description>` | You have one feature that needs user stories                          |
+| `/plan-story <description>`   | You need one user story with acceptance criteria and estimate         |
+
+## Before You Install
+
+You need:
+
+- Access to your Azure DevOps organization
+- Azure CLI installed and signed in
+- Node.js 20 or later
+- Bash on macOS/Linux, or PowerShell on Windows
+- At least one supported AI tool: Claude Code, VS Code Copilot, or Codex
+
+For a technical setup checklist, see [docs/install.MD](docs/install.MD).
+For plugin package details, see [docs/plugin-packaging.MD](docs/plugin-packaging.MD).
+
+Sign in to Azure first:
 
 ```powershell
 az login
+```
 
-# Recommended on Windows: silent SSO via Windows broker
+On Windows, this is also recommended:
+
+```powershell
 az config set core.enable_broker_on_windows=true
 ```
 
-### 2 — Run the installer
+## Install
 
-The installer registers the `azure-devops` MCP server in Claude Code, VS Code, and Codex. Run it once — it works across all repos.
+Run this once from this repository:
 
-```powershell
-.\scripts\install-ado-mcp-user.ps1 -Organization <your-ado-org>
-```
-
-To configure specific clients only:
+Windows:
 
 ```powershell
-.\scripts\install-ado-mcp-user.ps1 -Organization <your-ado-org> -ConfigureClaude
-.\scripts\install-ado-mcp-user.ps1 -Organization <your-ado-org> -ConfigureVSCode
-.\scripts\install-ado-mcp-user.ps1 -Organization <your-ado-org> -ConfigureCodex
+.\scripts\install.ps1 -Organization <your-azure-devops-org>
 ```
 
-The installer writes:
-- `~/.ado-mcp/ado-mcp.ps1` — launcher script
-- `~/.ado-mcp/config.json` — your org and auth method
-- MCP entries in Claude Code, VS Code user config, and Codex
+macOS/Linux:
 
-### 3 — Add a repo config
+```bash
+bash ./scripts/install.sh --organization <your-azure-devops-org>
+```
 
-In each repo that uses Azure DevOps, add `.ado-mcp.json` to the root:
+Replace `<your-azure-devops-org>` with the name of your Azure DevOps organization.
+
+Example:
+
+```powershell
+.\scripts\install.ps1 -Organization sarins-lab
+```
+
+```bash
+bash ./scripts/install.sh --organization sarins-lab
+```
+
+By default, this configures Claude Code, VS Code Copilot, and Codex.
+
+To install for only one tool:
+
+```powershell
+.\scripts\install.ps1 -Organization <your-org> -Clients Claude
+.\scripts\install.ps1 -Organization <your-org> -Clients VSCode
+.\scripts\install.ps1 -Organization <your-org> -Clients Codex
+```
+
+```bash
+bash ./scripts/install.sh --organization <your-org> --clients Claude
+bash ./scripts/install.sh --organization <your-org> --clients VSCode
+bash ./scripts/install.sh --organization <your-org> --clients Codex
+```
+
+## Connect A Repository To An Azure DevOps Project
+
+In each code repository, add a file named `.ado-mcp.json` at the repository root:
 
 ```json
 {
@@ -70,47 +123,104 @@ In each repo that uses Azure DevOps, add `.ado-mcp.json` to the root:
 }
 ```
 
-The launcher reads this file automatically when any tool spawns the MCP server. No changes to user-level config are needed when switching repos.
+This tells the assistant which Azure DevOps project and team to use for that repository.
 
-### 4 — Load the plugin in Claude Code
+## Daily Use
 
-```bash
-# From within the azure-devops-agents directory
-claude
+Open Claude Code, VS Code Copilot, or Codex in a repository that has `.ado-mcp.json`.
+
+Then ask normally:
+
+> We need to add self-service password reset.
+
+or:
+
+```text
+/plan-feature add self-service password reset
 ```
 
-Claude Code auto-discovers `.claude-plugin/plugin.json` and loads the agents and commands.
+The assistant will:
 
-## Commands
+1. Ask clarifying questions if needed.
+2. Draft the plan.
+3. Pause for your approval.
+4. Add technical and architecture notes.
+5. Estimate the work.
+6. Ask before creating anything in Azure DevOps.
+7. Create the work items with parent-child links.
 
-| Command | What it does |
-|---------|-------------|
-| `/plan-epic <id or description>` | Full BA → SA → Architect → PM pipeline for an epic. Creates features, stories, and ADRs in Azure DevOps. |
-| `/plan-feature <id or description>` | Same pipeline scoped to a single feature. |
-| `/plan-story <description> [under feature <id>]` | Creates one user story with AC, SA notes, and a Fibonacci story point estimate. |
+## Docker Option
 
-## How the MCP launcher works
+If your team prefers Docker, you can run the Azure DevOps helper through Docker instead of local Node.js.
 
-Rather than hardcoding an ADO project in user-level config, the launcher (`~/.ado-mcp/ado-mcp.ps1`) walks up the directory tree from the current working directory at startup, finds the nearest `.ado-mcp.json`, and injects `ado_mcp_project` and `ado_mcp_team` as environment variables before spawning `npx @azure-devops/mcp`. The org and auth method stay in the user-level `~/.ado-mcp/config.json` and never need to change.
-
-## Authentication
-
-The default authentication method is `azcli` — the launcher uses your active `az login` session. No service principal is required for personal or team use.
-
-If you need unattended/CI authentication, set these environment variables and re-run the installer:
+Build the image:
 
 ```powershell
-[Environment]::SetEnvironmentVariable("AZURE_CLIENT_ID",     "<id>",     "User")
-[Environment]::SetEnvironmentVariable("AZURE_CLIENT_SECRET", "<secret>", "User")
-[Environment]::SetEnvironmentVariable("AZURE_TENANT_ID",     "<tenant>", "User")
+docker build -t ghcr.io/sarins-lab/azure-devops-agents:latest .\docker
 ```
 
-The launcher detects these variables and performs a service principal login before starting the MCP server.
+```bash
+docker build -t ghcr.io/sarins-lab/azure-devops-agents:latest ./docker
+```
 
-## Contributing
+Install using Docker mode:
 
-See [CONTRIBUTING.md](CONTRIBUTING.md).
+```powershell
+.\scripts\install.ps1 `
+  -Organization <your-org> `
+  -DockerImage ghcr.io/sarins-lab/azure-devops-agents:latest `
+  -AuthToken <your-azure-devops-pat>
+```
+
+```bash
+bash ./scripts/install.sh \
+  --organization <your-org> \
+  --docker-image ghcr.io/sarins-lab/azure-devops-agents:latest \
+  --auth-token <your-azure-devops-pat>
+```
+
+Use Docker mode when you want each user's AI tool to run the same packaged helper environment.
+
+## What The Installer Changes
+
+The installer adds user-level configuration for the selected tools. It does not change your Azure DevOps projects by itself.
+
+It creates or updates:
+
+- Azure DevOps helper configuration under `~/.ado-mcp`
+- Claude Code plugin and planning context
+- Codex planning context under `~/.codex`
+- VS Code Copilot planning prompts and settings
+
+For Claude Code plugin installs, `.mcp.json` starts `scripts/ado-mcp-launcher.mjs`. That dispatcher starts PowerShell on Windows and Bash on macOS/Linux, so the plugin uses the same Azure DevOps MCP launcher on all supported operating systems.
+
+## For Maintainers
+
+The repo is organized so the planning logic is shared and each AI tool has its own adapter.
+
+| Path                                                 | Purpose                                                               |
+| ---------------------------------------------------- | --------------------------------------------------------------------- |
+| `shared/workflows/`                                  | Main planning workflows                                               |
+| `shared/mcp/`                                        | Azure DevOps tool rules                                               |
+| `plugins/azure-devops-agents-claude/`                | Claude Code install context                                           |
+| `plugins/azure-devops-agents-vscode/`                | VS Code Copilot instructions and prompts                              |
+| `plugins/azure-devops-agents-codex/`                 | Codex instructions                                                    |
+| `.claude-plugin/`, `commands/`, `agents/`, `skills/` | Claude Code plugin, commands, agents, skill, and marketplace metadata |
+
+To add a new planning capability, update `shared/` first, then expose it through the relevant files under `plugins/`.
+
+Useful validation commands:
+
+```powershell
+.\scripts\deploy.ps1
+```
+
+```bash
+bash ./scripts/deploy.sh
+```
+
+By default, both deployment scripts run in dry-run mode. Pass `-Publish` on Windows or `--publish` on macOS/Linux only when you are ready to create and push release artifacts.
 
 ## License
 
-[AGPL-3.0](LICENSE)
+[MIT](LICENSE)

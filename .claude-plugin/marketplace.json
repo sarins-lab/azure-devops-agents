@@ -1,0 +1,20 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "azure-devops-agents",
+  "description": "Azure DevOps sprint-planning plugins.",
+  "owner": {
+    "name": "Vivek Sarin"
+  },
+  "plugins": [
+    {
+      "name": "azure-devops-agents-claude",
+      "description": "Claude Code multi-agent sprint planning plugin for Azure DevOps.",
+      "author": {
+        "name": "Vivek Sarin"
+      },
+      "category": "development",
+      "source": "./",
+      "homepage": "https://github.com/sarins-lab/azure-devops-agents"
+    }
+  ]
+}

@@ -8,6 +8,16 @@
 - **Bug reports** — agent output that is incorrect, hallucinated, or violates the output format contract
 - **Documentation** — setup guides, worked examples, platform-specific notes
 
+## Package authoring rules
+
+Shared behavior belongs in `shared/` first:
+
+- Add canonical workflow changes to `shared/workflows/`
+- Add Azure DevOps MCP tool rules to `shared/mcp/`
+- Then expose the behavior in the relevant package under `plugins/azure-devops-agents-claude/`, `plugins/azure-devops-agents-vscode/`, or `plugins/azure-devops-agents-codex/`
+
+Do not fork the planning logic independently per client. Claude can use native commands and specialist agents, but Codex and VS Code should receive equivalent behavior through their adapter files.
+
 ## Agent authoring rules
 
 Each agent file in `agents/` must follow this structure:
@@ -18,7 +28,7 @@ name: <agent-name>
 description: <one-line description — used for routing, be specific>
 model: inherit
 color: <blue|cyan|magenta|yellow|green|red|orange>
-tools: ["mcp__azure-devops__<tool>", ...]
+tools: ["mcp__plugin_azure-devops-agents-claude_azure-devops__*", "mcp__azure-devops__<tool>", ...]
 ---
 
 Trigger this agent when:
@@ -35,8 +45,9 @@ assistant: "..."
 ```
 
 Rules:
+
 - `description` must be a single short line — no examples inside the YAML block
-- `tools` must use the `mcp__azure-devops__<tool>` prefix format
+- `tools` should include the Claude plugin-scoped wildcard `mcp__plugin_azure-devops-agents-claude_azure-devops__*` and any user-level `mcp__azure-devops__<official-tool-name>` entries needed for direct MCP installs. The official tool name starts with `mcp_ado_`.
 - Examples go in the body after the closing `---`, not inside the description
 - Every agent must define a step-by-step process, an explicit output format, and behavioural guardrails
 
@@ -48,7 +59,7 @@ Each command in `commands/` must have YAML frontmatter:
 ---
 description: <one sentence>
 argument-hint: <usage hint shown to the user>
-allowed-tools: ["mcp__azure-devops__<tool>", ...]
+allowed-tools: ["mcp__plugin_azure-devops-agents-claude_azure-devops__*", "mcp__azure-devops__mcp_ado_<domain>_<operation>", ...]
 ---
 ```
 
@@ -56,8 +67,8 @@ allowed-tools: ["mcp__azure-devops__<tool>", ...]
 
 There is no automated test suite. Test by running the commands against a real Azure DevOps project:
 
-1. Set up the MCP: `.\scripts\install-ado-mcp-user.ps1 -Organization <your-org>`
-2. Add `.ado-mcp.json` with your test project
+1. Set up the MCP and client adapters: `.\scripts\install.ps1 -Organization <your-org>`
+2. Copy `.ado-mcp.example.json` to `.ado-mcp.json` and fill in your test project
 3. Run `/plan-story "a simple story"` and verify the output format
 
 ## Pull requests

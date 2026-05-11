@@ -86,6 +86,8 @@ if ([string]::IsNullOrWhiteSpace($authentication)) {
     $authentication = "azcli"
 }
 
+$dockerImage = Get-StringValue -Object $userConfig -Name "dockerImage"
+
 $project = Get-StringValue -Object $repoConfig -Name "project"
 if (-not [string]::IsNullOrWhiteSpace($project)) {
     $env:ado_mcp_project = $project
@@ -102,6 +104,36 @@ if ($null -ne $userConfig -and $null -ne $userConfig.PSObject.Properties["domain
 }
 if ($null -ne $repoConfig -and $null -ne $repoConfig.PSObject.Properties["domains"]) {
     $domains = @($repoConfig.domains) | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) }
+}
+
+if (-not [string]::IsNullOrWhiteSpace($dockerImage)) {
+    if ([string]::IsNullOrWhiteSpace($env:ADO_MCP_AUTH_TOKEN)) {
+        throw "Docker MCP mode requires ADO_MCP_AUTH_TOKEN in the host environment. Set it to an Azure DevOps PAT before starting the IDE."
+    }
+
+    # Docker stdio mode uses envvar auth inside the container. Do not require local Azure CLI login.
+    $dockerArgs = @(
+        "run", "-i", "--rm",
+        "-e", "ADO_ORG=$organization",
+        "-e", "ADO_MCP_AUTH_TOKEN"
+    )
+    if (-not [string]::IsNullOrWhiteSpace($project)) {
+        $dockerArgs += "-e"
+        $dockerArgs += "ado_mcp_project=$project"
+    }
+    if (-not [string]::IsNullOrWhiteSpace($team)) {
+        $dockerArgs += "-e"
+        $dockerArgs += "ado_mcp_team=$team"
+    }
+    if ($domains.Count -gt 0) {
+        $domainStr = $domains -join ','
+        $dockerArgs += "-e"
+        $dockerArgs += "ADO_DOMAINS=$domainStr"
+    }
+    $dockerArgs += $dockerImage
+
+    & docker @dockerArgs
+    exit $LASTEXITCODE
 }
 
 if ($authentication -eq "azcli") {
@@ -135,28 +167,6 @@ if ($authentication -eq "azcli") {
             exit $LASTEXITCODE
         }
     }
-}
-
-$dockerImage = Get-StringValue -Object $userConfig -Name "dockerImage"
-
-if (-not [string]::IsNullOrWhiteSpace($dockerImage)) {
-    # Docker stdio mode: pass org and context as env vars; project/team forwarded from host
-    $dockerArgs = @(
-        "run", "-i", "--rm",
-        "-e", "ADO_ORG=$organization",
-        "-e", "ADO_AUTH=$authentication",
-        "-e", "AZURE_DEVOPS_EXT_PAT",
-        "-e", "ado_mcp_project=$project",
-        "-e", "ado_mcp_team=$team"
-    )
-    foreach ($domain in $domains) {
-        $dockerArgs += "-e"
-        $dockerArgs += "ADO_DOMAIN_$([string]$domain)=1"
-    }
-    $dockerArgs += $dockerImage
-
-    & docker @dockerArgs
-    exit $LASTEXITCODE
 }
 
 $npxArgs = @("-y", "@azure-devops/mcp", $organization, "--authentication", $authentication)

@@ -5,7 +5,7 @@ services:
     tty: false
     environment:
       ADO_ORG: ${ADO_ORG}
-      ADO_AUTH: ${ADO_AUTH:-pat}
-      AZURE_DEVOPS_EXT_PAT: ${AZURE_DEVOPS_EXT_PAT}
+      ADO_MCP_AUTH_TOKEN: ${ADO_MCP_AUTH_TOKEN}
+      ADO_DOMAINS: ${ADO_DOMAINS:-core,work,work-items,repositories,wiki}
       ado_mcp_project: ${ado_mcp_project:-}
       ado_mcp_team: ${ado_mcp_team:-}

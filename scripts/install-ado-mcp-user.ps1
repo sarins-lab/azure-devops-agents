@@ -2,8 +2,9 @@ param(
     [Parameter(Mandatory = $true)]
     [string]$Organization,
     [string]$Authentication = "azcli",
-    [string[]]$Domains = @(),
-    [string]$DockerImage = "",      # e.g. "ghcr.io/sarins-lab/azure-devops-mcp:latest"
+    [string[]]$Domains = @("core", "work", "work-items", "repositories", "wiki"),
+    [string]$DockerImage = "",      # e.g. "ghcr.io/sarins-lab/azure-devops-agents:latest"
+    [string]$AuthToken = "",        # Optional PAT to persist as ADO_MCP_AUTH_TOKEN for Docker mode
     [switch]$ConfigureCodex,
     [switch]$ConfigureClaude,
     [switch]$ConfigureVSCode,
@@ -13,126 +14,77 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-# ── Context blocks ─────────────────────────────────────────────────────────────
-# Written into each tool's global context file so planning conventions apply
-# in every repo, not just this one.
+# -- Context inputs -------------------------------------------------------------
+# Loaded from shared/ and plugins/ after the repo root is resolved.
 
-$claudeContextBlock = @'
-## Azure DevOps — Sprint Planning (azure-devops-agents plugin)
+# -- Helpers --------------------------------------------------------------------
 
-The `azure-devops` MCP server is registered at user level. Place an `.ado-mcp.json`
-file in any repo root to specify `project` and `team` — the launcher injects these
-automatically. No manual project override is needed in tool calls.
+function Read-JsonFile {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Path
+    )
 
-### Work item hierarchy
+    if (-not (Test-Path -LiteralPath $Path)) {
+        return $null
+    }
 
-```
-Epic → Feature → User Story → Task
-```
+    $content = Get-Content -LiteralPath $Path -Raw
+    if ([string]::IsNullOrWhiteSpace($content)) {
+        return $null
+    }
 
-All items must be created with parent links. Never create a Feature without linking
-it to its Epic, or a User Story without linking it to its Feature.
+    return $content | ConvertFrom-Json
+}
 
-### Planning intent detection
+function Read-TextFile {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Path
+    )
 
-Detect planning intent from natural language and route automatically — do not wait
-for an explicit slash command:
+    if (-not (Test-Path -LiteralPath $Path)) {
+        throw "Required install artifact not found: $Path"
+    }
 
-| If user mentions | Use |
-|------------------|-----|
-| Epic, broad initiative, multiple features | `/plan-epic` |
-| Feature, specific capability, named deliverable | `/plan-feature` |
-| User story, "as a user", single behaviour | `/plan-story` |
-| Ambiguous | Ask: "Are we planning an Epic, a Feature, or a User Story?" |
+    return Get-Content -LiteralPath $Path -Raw
+}
 
-**Trigger on:** "we need to", "we should", "let's", "I want to", "plan", "design",
-"build", "create", "define", "implement". Do **not** trigger for queries about
-existing work ("what's in sprint 3?", "show me story #42").
+function Join-TextSections {
+    param([string[]]$Sections)
 
-### ADO field conventions
+    $nonEmptySections = @()
+    foreach ($section in $Sections) {
+        if (-not [string]::IsNullOrWhiteSpace($section)) {
+            $nonEmptySections += $section.Trim()
+        }
+    }
 
-| Type | Required fields |
-|------|----------------|
-| Feature | Title, Description (SA technical approach), Tags |
-| User Story | Title, Acceptance Criteria (Given/When/Then), Description (SA notes + Architect risks), Story Points, Iteration Path |
-| Task | Title, Description, Remaining Work (hours), Assigned To |
+    return [string]::Join("`n`n", $nonEmptySections)
+}
 
-### Traceability
+function Get-StringValue {
+    param(
+        [object]$Object,
+        [string]$Name
+    )
 
-After creating any work item, verify the parent link by reading it back with
-`wit_work_item`. Fix missing links with `wit_work_item_link_write`. Never leave
-a work item parentless.
-'@
+    if ($null -eq $Object) {
+        return $null
+    }
 
-$codexContextBlock = @'
-## Azure DevOps — Sprint Planning (azure-devops-agents plugin)
+    $property = $Object.PSObject.Properties[$Name]
+    if ($null -eq $property -or $null -eq $property.Value) {
+        return $null
+    }
 
-The `azure-devops` MCP server is configured at user level via `~/.codex/config.toml`.
-Place `.ado-mcp.json` in any repo root to specify `project` and `team` — the launcher
-injects these automatically.
+    $value = [string]$property.Value
+    if ([string]::IsNullOrWhiteSpace($value)) {
+        return $null
+    }
 
-### Work item hierarchy
-
-```
-Epic → Feature → User Story → Task
-```
-
-All items must be created with parent links.
-
-### Planning agents
-
-| Agent | Role |
-|-------|------|
-| `ba-agent` | User stories with Given/When/Then acceptance criteria |
-| `sa-agent` | Technical design, dependency order, risk register |
-| `architect-agent` | ADRs, cross-cutting concern audit, principle violations |
-| `pm-agent` | Fibonacci estimates, story splitting, sprint assignment |
-
-Run the full pipeline in order: BA → SA → Architect → PM.
-
-### ADO field conventions
-
-| Type | Required fields |
-|------|----------------|
-| Feature | Title, Description (SA technical approach), Tags (feature area) |
-| User Story | Title, Acceptance Criteria (BA — Given/When/Then), Description (SA implementation notes + Architect concerns), Story Points, Iteration Path |
-| Task | Title, Description, Remaining Work (hours), Assigned To |
-
-### Traceability
-
-After creating any work item, verify the parent link with `mcp_ado_wit_get_work_item`. Fix
-missing links with `mcp_ado_wit_add_child_work_items`. Never leave a work item parentless.
-'@
-
-$copilotContextFile = @'
-# Azure DevOps Sprint Planning
-
-Use the `azure-devops` MCP server for all ADO operations. The launcher reads
-`.ado-mcp.json` from the repo root to determine project and team automatically.
-
-## Work item hierarchy
-
-```
-Epic → Feature → User Story → Task
-```
-
-Always create items with parent links. Never leave a work item parentless.
-
-## Required fields
-
-| Type | Required fields |
-|------|----------------|
-| Feature | Title, Description (SA technical approach), Tags |
-| User Story | Title, Acceptance Criteria (Given/When/Then), Description (SA notes + Architect risks), Story Points, Iteration Path |
-| Task | Title, Description, Remaining Work (hours), Assigned To |
-
-## Traceability
-
-After creating any work item, verify the parent link with `wit_work_item`.
-Fix missing links with `wit_work_item_link_write`.
-'@
-
-# ── Helpers ────────────────────────────────────────────────────────────────────
+    return $value
+}
 
 function ConvertTo-TomlString {
     param([string]$Value)
@@ -213,7 +165,7 @@ function Merge-VSCodeMcpServer {
 }
 
 # Adds a { "file": "<path>" } entry to github.copilot.chat.codeGeneration.instructions
-# in the VS Code user settings.json. Idempotent — safe to run more than once.
+# in the VS Code user settings.json. Idempotent - safe to run more than once.
 function Merge-VSCodeCopilotInstructions {
     param([string]$SettingsPath, [string]$ContextFilePath)
 
@@ -251,26 +203,103 @@ function Merge-VSCodeCopilotInstructions {
     Write-Host "  Added Copilot instruction reference: $SettingsPath"
 }
 
-# ── Main ───────────────────────────────────────────────────────────────────────
+function Merge-VSCodePromptFileLocation {
+    param([string]$SettingsPath, [string]$PromptDirectory)
+
+    $parent = Split-Path -Parent $SettingsPath
+    New-Item -ItemType Directory -Force -Path $parent | Out-Null
+
+    if (Test-Path -LiteralPath $SettingsPath) {
+        $raw  = Get-Content -LiteralPath $SettingsPath -Raw
+        $json = if ([string]::IsNullOrWhiteSpace($raw)) { [pscustomobject]@{} } else { $raw | ConvertFrom-Json }
+    } else {
+        $json = [pscustomobject]@{}
+    }
+
+    $key = "chat.promptFilesLocations"
+    $prop = $json.PSObject.Properties[$key]
+    if ($null -eq $prop -or $null -eq $prop.Value -or -not ($prop.Value -is [pscustomobject])) {
+        $locations = [pscustomobject]@{}
+        if ($null -ne $prop) {
+            $prop.Value = $locations
+        } else {
+            $json | Add-Member -NotePropertyName $key -NotePropertyValue $locations
+        }
+    } else {
+        $locations = $prop.Value
+    }
+
+    if ($null -ne $locations.PSObject.Properties[$PromptDirectory]) {
+        Write-Host "  VS Code prompt file location already present: $PromptDirectory"
+    } else {
+        $locations | Add-Member -NotePropertyName $PromptDirectory -NotePropertyValue $true
+        Write-Host "  Added VS Code prompt file location: $PromptDirectory"
+    }
+
+    $json | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $SettingsPath -Encoding utf8
+}
+
+# -- Main -----------------------------------------------------------------------
 
 $configureAll = $AllClients.IsPresent -or (-not $ConfigureCodex -and -not $ConfigureClaude -and -not $ConfigureVSCode)
+$configureCodexNow = $configureAll -or $ConfigureCodex
+$configureClaudeNow = $configureAll -or $ConfigureClaude
+$configureVSCodeNow = $configureAll -or $ConfigureVSCode
 
 $userHome      = if ([string]::IsNullOrWhiteSpace($env:ADO_MCP_HOME)) { $HOME } else { $env:ADO_MCP_HOME }
 $adoHome       = Join-Path $userHome ".ado-mcp"
 $launcherTarget = Join-Path $adoHome "ado-mcp.ps1"
 $configTarget  = Join-Path $adoHome "config.json"
 $copilotTarget = Join-Path $adoHome "copilot-context.md"
+$promptDir     = Join-Path $adoHome "prompts"
 $repoRoot      = Split-Path -Parent $PSScriptRoot
 $launcherSource = Join-Path $repoRoot "scripts\ado-mcp-launcher.ps1"
+$promptSourceDir = Join-Path $repoRoot "plugins\azure-devops-agents-vscode\prompts"
+
+$sharedPlanStory = Read-TextFile -Path (Join-Path $repoRoot "shared\workflows\plan-story.md")
+$sharedPlanFeature = Read-TextFile -Path (Join-Path $repoRoot "shared\workflows\plan-feature.md")
+$sharedPlanEpic = Read-TextFile -Path (Join-Path $repoRoot "shared\workflows\plan-epic.md")
+$sharedMcpRules = Read-TextFile -Path (Join-Path $repoRoot "shared\mcp\azure-devops-tools.md")
+$claudeContextBlock = Join-TextSections -Sections @(
+    (Read-TextFile -Path (Join-Path $repoRoot "plugins\azure-devops-agents-claude\CLAUDE.md")),
+    $sharedMcpRules
+)
+$codexContextBlock = Join-TextSections -Sections @(
+    (Read-TextFile -Path (Join-Path $repoRoot "plugins\azure-devops-agents-codex\AGENTS.md")),
+    $sharedPlanStory,
+    $sharedPlanFeature,
+    $sharedPlanEpic,
+    $sharedMcpRules
+)
+$copilotContextFile = Join-TextSections -Sections @(
+    (Read-TextFile -Path (Join-Path $repoRoot "plugins\azure-devops-agents-vscode\copilot-instructions.md")),
+    $sharedPlanStory,
+    $sharedPlanFeature,
+    $sharedPlanEpic,
+    $sharedMcpRules
+)
+if ($configureVSCodeNow -and -not (Test-Path -LiteralPath $promptSourceDir)) {
+    throw "Required VS Code prompt source directory not found: $promptSourceDir"
+}
 
 # Install launcher and config
 New-Item -ItemType Directory -Force -Path $adoHome | Out-Null
 Copy-Item -LiteralPath $launcherSource -Destination $launcherTarget -Force
 
 if ((Test-Path -LiteralPath $configTarget) -and -not $Force) {
-    Write-Host "MCP config already exists (use -Force to replace): $configTarget"
+    $existingConfig  = Read-JsonFile -Path $configTarget
+    $existingDocker  = Get-StringValue -Object $existingConfig -Name "dockerImage"
+    $incomingDocker  = if ([string]::IsNullOrWhiteSpace($DockerImage)) { $null } else { $DockerImage }
+    $dockerMismatch  = ($existingDocker -ne $incomingDocker)
+    $orgMismatch     = (Get-StringValue -Object $existingConfig -Name "organization") -ne $Organization
+
+    if ($dockerMismatch -or $orgMismatch) {
+        throw "Config already exists with different settings. Use -Force to overwrite: $configTarget"
+    }
+    Write-Host "MCP config already exists and matches - skipping (use -Force to replace): $configTarget"
 } else {
-    $config = [ordered]@{ organization = $Organization; authentication = $Authentication }
+    $configAuthentication = if ([string]::IsNullOrWhiteSpace($DockerImage)) { $Authentication } else { "envvar" }
+    $config = [ordered]@{ organization = $Organization; authentication = $configAuthentication }
     if ($Domains.Count -gt 0) { $config.domains = $Domains }
     if (-not [string]::IsNullOrWhiteSpace($DockerImage)) { $config.dockerImage = $DockerImage }
     $config | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $configTarget -Encoding utf8
@@ -278,76 +307,136 @@ if ((Test-Path -LiteralPath $configTarget) -and -not $Force) {
     Write-Host "Wrote MCP config [$mode]: $configTarget"
 }
 
-# Write Copilot context file (shared by VS Code; re-written on every install)
-Set-Content -LiteralPath $copilotTarget -Value $copilotContextFile -Encoding utf8
+if (-not [string]::IsNullOrWhiteSpace($DockerImage) -and -not [string]::IsNullOrWhiteSpace($AuthToken)) {
+    [Environment]::SetEnvironmentVariable("ADO_MCP_AUTH_TOKEN", $AuthToken, "User")
+    $env:ADO_MCP_AUTH_TOKEN = $AuthToken
+    Write-Host "Stored ADO_MCP_AUTH_TOKEN as a user environment variable for Docker MCP mode."
+}
 
-# ── Codex ──────────────────────────────────────────────────────────────────────
-if ($configureAll -or $ConfigureCodex) {
+# -- Codex ----------------------------------------------------------------------
+if ($configureCodexNow) {
     Write-Host "Configuring Codex..."
 
     $codexDir  = Join-Path $userHome ".codex"
     $codexToml = Join-Path $codexDir "config.toml"
     New-Item -ItemType Directory -Force -Path $codexDir | Out-Null
 
-    $tomlBlock = @"
-
-[mcp_servers.azure-devops]
-command = "powershell.exe"
-args = ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $(ConvertTo-TomlString -Value $launcherTarget)]
-"@
+    $tomlBlock = [string]::Join("`n", @(
+        "",
+        "[mcp_servers.azure-devops]",
+        'command = "powershell.exe"',
+        ('args = ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", {0}]' -f (ConvertTo-TomlString -Value $launcherTarget))
+    ))
 
     $existingToml = if (Test-Path -LiteralPath $codexToml) { Get-Content -LiteralPath $codexToml -Raw } else { "" }
     if ($existingToml -match '(?m)^\[mcp_servers\.azure-devops\]') {
         if (-not $Force) {
-            Write-Host "  Codex MCP already configured. Use -Force to replace manually: $codexToml"
+            Write-Host "  Codex MCP already configured. Use -Force to replace: $codexToml"
         } else {
-            throw "Codex TOML replacement is not automated. Edit $codexToml manually and re-run."
+            $pattern = '(?ms)^\[mcp_servers\.azure-devops\]\r?\n.*?(?=^\[|\z)'
+            $replacement = $tomlBlock.Trim() + "`n"
+            $updatedToml = [regex]::Replace($existingToml, $pattern, $replacement)
+            Set-Content -LiteralPath $codexToml -Value $updatedToml -Encoding utf8 -NoNewline
+            Write-Host "  Replaced Codex MCP: $codexToml"
         }
     } else {
         Add-Content -LiteralPath $codexToml -Value $tomlBlock -Encoding utf8
         Write-Host "  Configured Codex MCP: $codexToml"
     }
 
-    # Global AGENTS.md — Codex reads this in every repo
+    # Global AGENTS.md - Codex reads this in every repo
     $codexAgentsPath = Join-Path $codexDir "AGENTS.md"
     Merge-MarkdownBlock -Path $codexAgentsPath -MarkerName "azure-devops-agents" -Content $codexContextBlock
 }
 
-# ── VS Code ────────────────────────────────────────────────────────────────────
-if ($configureAll -or $ConfigureVSCode) {
+# -- VS Code --------------------------------------------------------------------
+if ($configureVSCodeNow) {
     Write-Host "Configuring VS Code..."
 
     $vsCodeMcpPath      = Join-Path $env:APPDATA "Code\User\mcp.json"
     $vsCodeSettingsPath = Join-Path $env:APPDATA "Code\User\settings.json"
 
+    Set-Content -LiteralPath $copilotTarget -Value $copilotContextFile -Encoding utf8
+    New-Item -ItemType Directory -Force -Path $promptDir | Out-Null
+    Get-ChildItem -LiteralPath $promptSourceDir -Filter "*.prompt.md" | ForEach-Object {
+        Copy-Item -LiteralPath $_.FullName -Destination (Join-Path $promptDir $_.Name) -Force
+    }
+
     Merge-VSCodeMcpServer -Path $vsCodeMcpPath -LauncherPath $launcherTarget
     Merge-VSCodeCopilotInstructions -SettingsPath $vsCodeSettingsPath -ContextFilePath $copilotTarget
+    Merge-VSCodePromptFileLocation -SettingsPath $vsCodeSettingsPath -PromptDirectory $promptDir
 }
 
-# ── Claude Code ────────────────────────────────────────────────────────────────
-if ($configureAll -or $ConfigureClaude) {
+# -- Claude Code ----------------------------------------------------------------
+$claudeMcpRegistered = $false
+$claudePluginInstalled = $false
+if ($configureClaudeNow) {
     Write-Host "Configuring Claude Code..."
 
     $claude = Get-Command "claude" -ErrorAction SilentlyContinue
     if ($null -eq $claude) {
-        Write-Host "  Claude CLI not found. Run this after installing Claude Code:"
+        Write-Host "  Claude CLI not found. MCP and plugin were NOT registered. Run manually after installing Claude Code:"
         Write-Host "  claude mcp add --scope user azure-devops -- powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$launcherTarget`""
+        Write-Host "  claude plugin marketplace add --scope user `"$repoRoot`""
+        Write-Host "  claude plugin install --scope user azure-devops-agents-claude@azure-devops-agents"
     } else {
         & claude mcp add --scope user azure-devops -- powershell.exe -NoProfile -ExecutionPolicy Bypass -File $launcherTarget
         if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+        $claudeMcpRegistered = $true
+
+        $marketplaceList = (& claude plugin marketplace list 2>&1) -join "`n"
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+        if ($marketplaceList -match '(?m)^\s*>\s+azure-devops-agents\s*$') {
+            Write-Host "  Claude marketplace already registered: azure-devops-agents"
+        } else {
+            & claude plugin marketplace add --scope user $repoRoot
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            Write-Host "  Registered Claude marketplace: azure-devops-agents"
+        }
+
+        $pluginList = (& claude plugin list 2>&1) -join "`n"
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+        if ($pluginList -match '(?m)^\s*>\s+azure-devops-agents-claude@azure-devops-agents\s*$') {
+            Write-Host "  Claude plugin already installed: azure-devops-agents-claude"
+            $claudePluginInstalled = $true
+        } else {
+            & claude plugin install --scope user azure-devops-agents-claude@azure-devops-agents
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            $claudePluginInstalled = $true
+        }
     }
 
-    # Global CLAUDE.md — Claude Code reads this in every project
+    # Global CLAUDE.md - written regardless of whether claude CLI was found
     $claudeContextPath = Join-Path $userHome ".claude\CLAUDE.md"
     Merge-MarkdownBlock -Path $claudeContextPath -MarkerName "azure-devops-agents" -Content $claudeContextBlock
 }
 
 Write-Host ""
 Write-Host "Done. Per-tool summary:"
-Write-Host "  Claude Code : MCP registered + ~/.claude/CLAUDE.md updated"
-Write-Host "  Codex       : MCP registered + ~/.codex/AGENTS.md updated"
-Write-Host "  VS Code     : MCP registered + Copilot instruction added (references $copilotTarget)"
+if ($configureClaudeNow) {
+    if ($claudeMcpRegistered) {
+        if ($claudePluginInstalled) {
+            Write-Host "  Claude Code : MCP registered + plugin installed + ~/.claude/CLAUDE.md updated"
+        } else {
+            Write-Host "  Claude Code : MCP registered + ~/.claude/CLAUDE.md updated"
+        }
+    } else {
+        Write-Host "  Claude Code : ~/.claude/CLAUDE.md updated (MCP/plugin pending - run manual commands above)"
+    }
+}
+if ($configureCodexNow) {
+    Write-Host "  Codex       : MCP registered + ~/.codex/AGENTS.md updated"
+}
+if ($configureVSCodeNow) {
+    Write-Host "  VS Code     : MCP registered + Copilot instruction + prompt files added"
+}
 Write-Host ""
-Write-Host "Auth defaults to azcli. Run 'az login' if needed."
-Write-Host "Service principal: set AZURE_CLIENT_ID, AZURE_CLIENT_SECRET, AZURE_TENANT_ID, then restart all tools."
+if (-not [string]::IsNullOrWhiteSpace($DockerImage)) {
+    Write-Host "Docker auth      : set ADO_MCP_AUTH_TOKEN to your Azure DevOps PAT before starting any tool."
+    Write-Host "                  Or rerun with -AuthToken <pat> to store it as a user environment variable."
+} else {
+    Write-Host "Auth defaults to azcli. Run 'az login' if needed."
+    Write-Host "Service principal: set AZURE_CLIENT_ID, AZURE_CLIENT_SECRET, AZURE_TENANT_ID, then restart all tools."
+}
 Write-Host "Per-repo config  : add .ado-mcp.json -> { ""project"": ""YourProject"", ""team"": ""YourTeam"" }"
+

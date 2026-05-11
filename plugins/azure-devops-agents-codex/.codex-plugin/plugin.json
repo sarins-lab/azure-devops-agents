@@ -1,0 +1,37 @@
+{
+  "name": "azure-devops-agents-codex",
+  "version": "1.0.0",
+  "description": "Codex planning adapter for Azure DevOps Epics, Features, User Stories, and ADRs.",
+  "author": {
+    "name": "Vivek Sarin",
+    "url": "https://github.com/sarins-lab/azure-devops-agents"
+  },
+  "homepage": "https://github.com/sarins-lab/azure-devops-agents",
+  "repository": "https://github.com/sarins-lab/azure-devops-agents",
+  "license": "MIT",
+  "keywords": [
+    "azure-devops",
+    "planning",
+    "mcp",
+    "codex"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Azure DevOps Planning for Codex",
+    "shortDescription": "Plan Azure DevOps work items from Codex.",
+    "longDescription": "Adds Codex guidance for planning Epics, Features, User Stories, acceptance criteria, estimates, and ADRs using the shared Azure DevOps planning workflows.",
+    "developerName": "Vivek Sarin",
+    "category": "Productivity",
+    "capabilities": [
+      "Planning",
+      "MCP"
+    ],
+    "websiteURL": "https://github.com/sarins-lab/azure-devops-agents",
+    "defaultPrompt": [
+      "/plan-story add self-service password reset",
+      "/plan-feature add certificate rotation",
+      "/plan-epic modernize developer onboarding"
+    ],
+    "brandColor": "#2563EB"
+  }
+}

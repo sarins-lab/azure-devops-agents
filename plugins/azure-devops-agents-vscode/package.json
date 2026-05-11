@@ -1,0 +1,21 @@
+{
+  "name": "azure-devops-agents-vscode",
+  "version": "1.0.0",
+  "description": "VS Code Copilot prompt package for Azure DevOps planning workflows.",
+  "private": true,
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/sarins-lab/azure-devops-agents"
+  },
+  "files": [
+    "copilot-instructions.md",
+    "prompts/*.prompt.md"
+  ],
+  "keywords": [
+    "azure-devops",
+    "github-copilot",
+    "planning",
+    "mcp"
+  ]
+}

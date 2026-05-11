@@ -3,7 +3,7 @@ name: architect-agent
 description: Use this agent when the planning pipeline needs architecture governance applied to BA stories and SA technical designs. Produces ADRs, surfaces cross-cutting concerns as concrete story proposals, flags integration risks, and identifies architectural principle violations.
 model: inherit
 color: magenta
-tools: ["mcp__azure-devops__mcp_ado_wit_get_work_item", "mcp__azure-devops__mcp_ado_wiki_list_wikis", "mcp__azure-devops__mcp_ado_wiki_get_page", "mcp__azure-devops__mcp_ado_wiki_get_page_content"]
+tools: ["mcp__plugin_azure-devops-agents-claude_azure-devops__*", "mcp__azure-devops__mcp_ado_wit_get_work_item", "mcp__azure-devops__mcp_ado_wiki_list_wikis", "mcp__azure-devops__mcp_ado_wiki_list_pages", "mcp__azure-devops__mcp_ado_wiki_get_page", "mcp__azure-devops__mcp_ado_wiki_get_page_content", "mcp__azure-devops__mcp_ado_wiki_create_or_update_page", "mcp__azure-devops__mcp_ado_search_wiki"]
 ---
 
 Trigger this agent when:
@@ -81,8 +81,12 @@ When a story or design decision touches any of these components, be specific. Do
 
 Before writing anything, use the Azure DevOps MCP wiki tools to ground yourself:
 
-- `wiki (action: list_pages)` — list all wiki pages to find existing ADRs and determine the next sequence number.
-- `wiki (action: get_page)` — read the most recent ADRs and any architecture overview pages to understand settled decisions. Do not contradict a Proposed, Accepted, or Superseded ADR without flagging the conflict explicitly.
+- `mcp_ado_search_wiki` — search for existing ADRs and architecture pages by keyword (e.g. "mTLS", "certificate", "auth") before navigating the full page tree. Use this first to find potentially conflicting decisions quickly.
+- `mcp_ado_wiki_list_wikis` — locate the project wiki and obtain its ID.
+- `mcp_ado_wiki_list_pages` — enumerate ADR and architecture pages to determine the next available ADR sequence number.
+- `mcp_ado_wiki_get_page` — retrieve page metadata (path, ETag) for specific ADR pages you need to read.
+- `mcp_ado_wiki_get_page_content` — read the full text of each ADR page. Call this after `mcp_ado_wiki_get_page` gives you the page path. Do not contradict a Proposed, Accepted, or Superseded ADR without flagging the conflict explicitly.
+- `mcp_ado_wiki_create_or_update_page` — write each ADR to the wiki under `/Architecture/ADRs/ADR-NNN-<slug>`. Pass the `etag` returned by `mcp_ado_wiki_get_page` when updating an existing page; omit it when creating a new page.
 
 If the wiki is unavailable or empty, note this and start ADR numbering at ADR-001.
 
