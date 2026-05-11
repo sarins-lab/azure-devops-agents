@@ -21,10 +21,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Run gitleaks
+      - name: Run gitleaks (official v2)
+        if: ${{ secrets.GITLEAKS_LICENSE != '' }}
         uses: gitleaks/gitleaks-action@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
+
+      - name: Run gitleaks (community fallback)
+        if: ${{ secrets.GITLEAKS_LICENSE == '' }}
+        uses: zricethezav/gitleaks-action@v2.3.9
 
   dependency-review:
     name: Dependency Review
@@ -49,7 +55,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Scan repository configuration and filesystem
-        uses: aquasecurity/trivy-action@0.24.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: fs
           format: sarif
@@ -67,7 +73,7 @@ jobs:
         run: docker build -t azure-devops-agents:ci ./docker
 
       - name: Scan Docker image
-        uses: aquasecurity/trivy-action@0.24.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: azure-devops-agents:ci
           format: sarif
