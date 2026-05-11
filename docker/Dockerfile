@@ -10,10 +10,6 @@ FROM node:alpine
 
 RUN apk add --no-cache tini
 
-# Keep runtime lean: retain Node and the installed MCP package, remove npm/npx toolchain.
-RUN rm -rf /usr/local/lib/node_modules/npm \
-	&& rm -f /usr/local/bin/npm /usr/local/bin/npx
-
 COPY --from=builder /usr/local/lib/node_modules/@azure-devops /usr/local/lib/node_modules/@azure-devops
 COPY --from=builder /usr/local/bin/mcp-server-azuredevops /usr/local/bin/mcp-server-azuredevops
 
