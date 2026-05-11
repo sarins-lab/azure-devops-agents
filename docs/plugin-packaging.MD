@@ -17,11 +17,11 @@ Client packages should not fork the planning rules. They should consume or packa
 
 ## Client Packages
 
-| Package | Path | Purpose |
-|---------|------|---------|
-| Claude Code | `.claude-plugin/`, `commands/`, `agents/`, `skills/`, `plugins/azure-devops-agents-claude/` | Native Claude plugin, commands, agents, skill, MCP declaration, and global context |
-| VS Code Copilot | `plugins/azure-devops-agents-vscode/` | Copilot instruction file and reusable prompt files |
-| Codex | `plugins/azure-devops-agents-codex/` | Codex plugin manifest, skill, and global `AGENTS.md` adapter |
+| Package         | Path                                                                                        | Purpose                                                                            |
+| --------------- | ------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| Claude Code     | `.claude-plugin/`, `commands/`, `agents/`, `skills/`, `plugins/azure-devops-agents-claude/` | Native Claude plugin, commands, agents, skill, MCP declaration, and global context |
+| VS Code Copilot | `plugins/azure-devops-agents-vscode/`                                                       | Copilot instruction file and reusable prompt files                                 |
+| Codex           | `plugins/azure-devops-agents-codex/`                                                        | Codex plugin manifest, skill, and global `AGENTS.md` adapter                       |
 
 ## Package Names
 
