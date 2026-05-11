@@ -3,8 +3,8 @@
 # no patched upstream release path in @azure-devops/mcp 2.7.0.
 # Re-evaluate when a newer @azure-devops/mcp version is available.
 
-# CVE-2026-27904
-# CVE-2026-27903
-# CVE-2026-26996
-# CVE-2025-5889
-# CVE-2026-33750
+CVE-2026-27904
+CVE-2026-27903
+CVE-2026-26996
+CVE-2025-5889
+CVE-2026-33750
