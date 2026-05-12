@@ -302,15 +302,19 @@ if ($Mode -eq "docker") {
 New-Item -ItemType Directory -Force -Path $adoHome | Out-Null
 Copy-Item -LiteralPath $launcherSource -Destination $launcherTarget -Force
 
-# Always install/update the MCP package globally so the launcher uses the direct
-# binary rather than npx. npx has a cold-start delay that causes MCP clients to
-# time out during the initialize handshake. Best-effort: warn and continue if
-# the global install fails (e.g. requires admin rights).
-Write-Host "Installing @azure-devops/mcp globally..."
-try {
-    & npm install -g "@azure-devops/mcp" --silent
-} catch {
-    Write-Warning "Global npm install failed — launcher will fall back to npx. ($_)"
+# Install @azure-devops/mcp globally (npx mode only) so the launcher uses the
+# direct binary rather than npx. Skipped in Docker mode and when npm is unavailable.
+if ($Mode -eq "npx") {
+    $npmCmd = Get-Command npm -ErrorAction SilentlyContinue
+    if ($npmCmd) {
+        Write-Host "Installing @azure-devops/mcp globally..."
+        & npm install -g "@azure-devops/mcp" --silent
+        if ($LASTEXITCODE -ne 0) {
+            Write-Warning "Global npm install failed (exit $LASTEXITCODE) — launcher will fall back to npx."
+        }
+    } else {
+        Write-Warning "npm not found — skipping global install; launcher will use npx."
+    }
 }
 
 if ((Test-Path -LiteralPath $configTarget) -and -not $Force) {

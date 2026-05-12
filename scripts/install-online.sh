@@ -586,10 +586,16 @@ LAUNCHER
 chmod 700 "$launcher_target"
 echo "Wrote online MCP launcher: $launcher_target"
 
-# Install the MCP package globally so the launcher can use the direct binary
-# instead of npx, which has a slow cold-start that causes connection timeouts.
-echo "Installing @azure-devops/mcp globally..."
-npm install -g @azure-devops/mcp --silent || echo "WARN: global npm install failed — launcher will fall back to npx." >&2
+# Install @azure-devops/mcp globally (npx mode only) so the launcher uses the
+# direct binary rather than npx. Skipped in Docker mode and when npm is unavailable.
+if [[ -z "$docker_image" ]]; then
+  if command -v npm >/dev/null 2>&1; then
+    echo "Installing @azure-devops/mcp globally..."
+    npm install -g @azure-devops/mcp --silent || echo "WARN: global npm install failed — launcher will fall back to npx." >&2
+  else
+    echo "WARN: npm not found — skipping global install; launcher will use npx." >&2
+  fi
+fi
 
 existing_docker=""
 existing_org=""

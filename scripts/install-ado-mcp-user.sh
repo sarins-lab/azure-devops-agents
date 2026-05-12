@@ -18,7 +18,7 @@ Usage:
 Options:
   --organization <org>       Azure DevOps organization name. Required.
   --mode <npx|docker>        How to run the MCP server. Default: npx.
-                               npx    — use globally installed binary (recommended).
+                               npx    — prefer globally installed binary, fall back to npx (recommended).
                                docker — [EXPERIMENTAL] run via Docker container;
                                         requires --docker-image and ADO_MCP_AUTH_TOKEN.
   --docker-image <image>     Docker image to use (--mode docker only).
@@ -315,12 +315,18 @@ mkdir -p "$ado_home"
 cp "$repo_root/scripts/ado-mcp-launcher.sh" "$launcher_target"
 chmod 700 "$launcher_target"
 
-# Always install/update the MCP package globally so the launcher uses the direct
-# binary rather than npx. npx has a cold-start delay that causes MCP clients to
-# time out during the initialize handshake. Best-effort: warn and continue if
-# the global install fails (e.g. EACCES); the launcher will fall back to npx.
-echo "Installing @azure-devops/mcp globally..."
-npm install -g @azure-devops/mcp --silent || echo "WARN: global npm install failed — launcher will fall back to npx." >&2
+# Install @azure-devops/mcp globally (npx mode only) so the launcher uses the
+# direct binary rather than npx. npx has a cold-start delay that causes MCP
+# clients to time out during the initialize handshake. Skipped in Docker mode
+# (the binary is not needed) and when npm is unavailable.
+if [[ "$mode" == "npx" ]]; then
+  if command -v npm >/dev/null 2>&1; then
+    echo "Installing @azure-devops/mcp globally..."
+    npm install -g @azure-devops/mcp --silent || echo "WARN: global npm install failed — launcher will fall back to npx." >&2
+  else
+    echo "WARN: npm not found — skipping global install; launcher will use npx." >&2
+  fi
+fi
 
 existing_docker=""
 existing_org=""
