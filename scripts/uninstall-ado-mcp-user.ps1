@@ -109,7 +109,7 @@ if ($configureClaude) {
 
         $pluginList = & claude plugin list 2>$null
         if ($pluginList -match "azure-devops-agents-claude@azure-devops-agents") {
-            & claude plugin uninstall --scope user azure-devops-agents-claude@azure-devops-agents
+            & claude plugin uninstall azure-devops-agents-claude@azure-devops-agents
             Write-Host "  Uninstalled plugin: azure-devops-agents-claude"
         } else {
             Write-Host "  Plugin not installed, skipping."
@@ -117,7 +117,7 @@ if ($configureClaude) {
 
         $marketplaceList = & claude plugin marketplace list 2>$null
         if ($marketplaceList -match "azure-devops-agents") {
-            & claude plugin marketplace remove --scope user azure-devops-agents
+            & claude plugin marketplace remove azure-devops-agents
             Write-Host "  Removed marketplace: azure-devops-agents"
         } else {
             Write-Host "  Marketplace not registered, skipping."

@@ -119,14 +119,14 @@ if [[ $configure_claude -eq 1 ]]; then
     fi
 
     if claude plugin list 2>/dev/null | grep -Eq "azure-devops-agents-claude@azure-devops-agents"; then
-      claude plugin uninstall --scope user azure-devops-agents-claude@azure-devops-agents
+      claude plugin uninstall azure-devops-agents-claude@azure-devops-agents
       echo "  Uninstalled plugin: azure-devops-agents-claude"
     else
       echo "  Plugin not installed, skipping."
     fi
 
     if claude plugin marketplace list 2>/dev/null | grep -Eq "azure-devops-agents"; then
-      claude plugin marketplace remove --scope user azure-devops-agents
+      claude plugin marketplace remove azure-devops-agents
       echo "  Removed marketplace: azure-devops-agents"
     else
       echo "  Marketplace not registered, skipping."
