@@ -632,6 +632,29 @@ function Get-McpServerJson {
     }
 }
 
+function Install-GlobalMcpIfMissing {
+    if (-not [string]::IsNullOrWhiteSpace($DockerImage)) {
+        return
+    }
+
+    $mcpBin = Get-Command mcp-server-azuredevops -ErrorAction SilentlyContinue
+    if ($mcpBin) {
+        Write-Host "Global @azure-devops/mcp binary already available; skipping npm install."
+        return
+    }
+
+    $npmCmd = Get-Command npm -ErrorAction SilentlyContinue
+    if ($npmCmd) {
+        Write-Host "Installing @azure-devops/mcp globally..."
+        & npm install -g "@azure-devops/mcp" --silent
+        if ($LASTEXITCODE -ne 0) {
+            Write-Warning "Global npm install failed (exit $LASTEXITCODE) - launcher will fall back to npx."
+        }
+    } else {
+        Write-Warning "npm not found - skipping global install; launcher will use npx."
+    }
+}
+
 function Merge-MarkdownBlock {
     param(
         [string]$Path,
@@ -797,21 +820,6 @@ New-Item -ItemType Directory -Force -Path $adoHome | Out-Null
 Write-Utf8NoBomFile -Path $launcherTarget -Value ($LauncherScript.TrimEnd() + "`n") -NoNewline
 Write-Host "Wrote online MCP launcher: $launcherTarget"
 
-# Install @azure-devops/mcp globally (npx mode only) so the launcher uses the
-# direct binary rather than npx. Skipped in Docker mode and when npm is unavailable.
-if ([string]::IsNullOrWhiteSpace($DockerImage)) {
-    $npmCmd = Get-Command npm -ErrorAction SilentlyContinue
-    if ($npmCmd) {
-        Write-Host "Installing @azure-devops/mcp globally..."
-        & npm install -g "@azure-devops/mcp" --silent
-        if ($LASTEXITCODE -ne 0) {
-            Write-Warning "Global npm install failed (exit $LASTEXITCODE) — launcher will fall back to npx."
-        }
-    } else {
-        Write-Warning "npm not found — skipping global install; launcher will use npx."
-    }
-}
-
 if ((Test-Path -LiteralPath $configTarget) -and -not $Force) {
     $existingConfig = Read-JsonFile -Path $configTarget
     $existingDocker = Get-StringValue -Object $existingConfig -Name "dockerImage"
@@ -836,6 +844,8 @@ if ((Test-Path -LiteralPath $configTarget) -and -not $Force) {
     $mode = if ([string]::IsNullOrWhiteSpace($DockerImage)) { "npx (local)" } else { "Docker ($DockerImage)" }
     Write-Host "Wrote MCP config [$mode]: $configTarget"
 }
+
+Install-GlobalMcpIfMissing
 
 if (-not [string]::IsNullOrWhiteSpace($DockerImage) -and -not [string]::IsNullOrWhiteSpace($AuthToken)) {
     Set-CurrentAndPersistentUserEnvironmentVariable -Name "ADO_MCP_AUTH_TOKEN" -Value $AuthToken

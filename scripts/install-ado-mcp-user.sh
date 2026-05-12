@@ -311,22 +311,27 @@ vscode_user_dir() {
   esac
 }
 
+install_global_mcp_if_missing() {
+  if [[ "$mode" != "npx" ]]; then
+    return 0
+  fi
+
+  if command -v mcp-server-azuredevops >/dev/null 2>&1; then
+    echo "Global @azure-devops/mcp binary already available; skipping npm install."
+    return 0
+  fi
+
+  if command -v npm >/dev/null 2>&1; then
+    echo "Installing @azure-devops/mcp globally..."
+    npm install -g @azure-devops/mcp --silent || echo "WARN: global npm install failed - launcher will fall back to npx." >&2
+  else
+    echo "WARN: npm not found - skipping global install; launcher will use npx." >&2
+  fi
+}
+
 mkdir -p "$ado_home"
 cp "$repo_root/scripts/ado-mcp-launcher.sh" "$launcher_target"
 chmod 700 "$launcher_target"
-
-# Install @azure-devops/mcp globally (npx mode only) so the launcher uses the
-# direct binary rather than npx. npx has a cold-start delay that causes MCP
-# clients to time out during the initialize handshake. Skipped in Docker mode
-# (the binary is not needed) and when npm is unavailable.
-if [[ "$mode" == "npx" ]]; then
-  if command -v npm >/dev/null 2>&1; then
-    echo "Installing @azure-devops/mcp globally..."
-    npm install -g @azure-devops/mcp --silent || echo "WARN: global npm install failed — launcher will fall back to npx." >&2
-  else
-    echo "WARN: npm not found — skipping global install; launcher will use npx." >&2
-  fi
-fi
 
 existing_docker=""
 existing_org=""
@@ -357,6 +362,8 @@ if (dockerImage) config.dockerImage = dockerImage;
 fs.writeFileSync(path, `${JSON.stringify(config, null, 2)}\n`, "utf8");
 NODE
 echo "Wrote MCP config: $config_target"
+
+install_global_mcp_if_missing
 
 if [[ -n "$docker_image" && -n "$auth_token" ]]; then
   printf 'export ADO_MCP_AUTH_TOKEN=%s\n' "$(shell_quote "$auth_token")" > "$env_target"
@@ -406,18 +413,21 @@ if [[ $configure_vscode -eq 1 ]]; then
   merge_vscode_json "$vs_code_dir/mcp.json" "$vs_code_dir/settings.json" "$launcher_target" "$copilot_target" "$prompt_dir" "$force"
 fi
 
-claude_mcp_registered=0
 claude_plugin_installed=0
 if [[ $configure_claude -eq 1 ]]; then
   echo "Configuring Claude Code..."
   if ! command -v claude >/dev/null 2>&1; then
     echo "  Claude CLI not found. Run manually after installing Claude Code:"
-    echo "  claude mcp add --scope user azure-devops -- bash \"$launcher_target\""
     echo "  claude plugin marketplace add --scope user \"$repo_root\""
     echo "  claude plugin install --scope user azure-devops-agents-claude@azure-devops-agents"
   else
-    claude mcp add --scope user azure-devops -- bash "$launcher_target"
-    claude_mcp_registered=1
+    if claude mcp list 2>/dev/null | grep -Eq '^azure-devops:'; then
+      if claude mcp remove --scope user azure-devops; then
+        echo "  Removed legacy standalone MCP server: azure-devops"
+      else
+        echo "  WARN: could not remove legacy standalone MCP server: azure-devops" >&2
+      fi
+    fi
     if claude plugin marketplace list | grep -Eq '^[[:space:]]*>[[:space:]]+azure-devops-agents[[:space:]]*$'; then
       echo "  Claude marketplace already registered: azure-devops-agents"
     else
@@ -436,10 +446,10 @@ fi
 echo
 echo "Done. Per-tool summary:"
 if [[ $configure_claude -eq 1 ]]; then
-  if [[ $claude_mcp_registered -eq 1 && $claude_plugin_installed -eq 1 ]]; then
-    echo "  Claude Code : MCP registered + plugin installed + ~/.claude/CLAUDE.md updated"
+  if [[ $claude_plugin_installed -eq 1 ]]; then
+    echo "  Claude Code : plugin installed + plugin MCP active + ~/.claude/CLAUDE.md updated"
   else
-    echo "  Claude Code : ~/.claude/CLAUDE.md updated (MCP/plugin pending if Claude CLI was absent)"
+    echo "  Claude Code : ~/.claude/CLAUDE.md updated (plugin pending if Claude CLI was absent)"
   fi
 fi
 [[ $configure_codex -eq 1 ]] && echo "  Codex       : MCP registered + ~/.codex/AGENTS.md updated"

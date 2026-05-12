@@ -102,6 +102,29 @@ function Get-McpServerJson {
     }
 }
 
+function Install-GlobalMcpIfMissing {
+    if ($Mode -ne "npx") {
+        return
+    }
+
+    $mcpBin = Get-Command mcp-server-azuredevops -ErrorAction SilentlyContinue
+    if ($mcpBin) {
+        Write-Host "Global @azure-devops/mcp binary already available; skipping npm install."
+        return
+    }
+
+    $npmCmd = Get-Command npm -ErrorAction SilentlyContinue
+    if ($npmCmd) {
+        Write-Host "Installing @azure-devops/mcp globally..."
+        & npm install -g "@azure-devops/mcp" --silent
+        if ($LASTEXITCODE -ne 0) {
+            Write-Warning "Global npm install failed (exit $LASTEXITCODE) - launcher will fall back to npx."
+        }
+    } else {
+        Write-Warning "npm not found - skipping global install; launcher will use npx."
+    }
+}
+
 # Writes or replaces a delimited block inside a markdown file.
 # The block is wrapped in HTML comments so it survives manual edits above/below.
 function Merge-MarkdownBlock {
@@ -302,21 +325,6 @@ if ($Mode -eq "docker") {
 New-Item -ItemType Directory -Force -Path $adoHome | Out-Null
 Copy-Item -LiteralPath $launcherSource -Destination $launcherTarget -Force
 
-# Install @azure-devops/mcp globally (npx mode only) so the launcher uses the
-# direct binary rather than npx. Skipped in Docker mode and when npm is unavailable.
-if ($Mode -eq "npx") {
-    $npmCmd = Get-Command npm -ErrorAction SilentlyContinue
-    if ($npmCmd) {
-        Write-Host "Installing @azure-devops/mcp globally..."
-        & npm install -g "@azure-devops/mcp" --silent
-        if ($LASTEXITCODE -ne 0) {
-            Write-Warning "Global npm install failed (exit $LASTEXITCODE) — launcher will fall back to npx."
-        }
-    } else {
-        Write-Warning "npm not found — skipping global install; launcher will use npx."
-    }
-}
-
 if ((Test-Path -LiteralPath $configTarget) -and -not $Force) {
     $existingConfig  = Read-JsonFile -Path $configTarget
     $existingDocker  = Get-StringValue -Object $existingConfig -Name "dockerImage"
@@ -337,6 +345,8 @@ if ((Test-Path -LiteralPath $configTarget) -and -not $Force) {
     $modeLabel = if ([string]::IsNullOrWhiteSpace($DockerImage)) { "npx (local)" } else { "Docker ($DockerImage)" }
     Write-Host "Wrote MCP config [$modeLabel]: $configTarget"
 }
+
+Install-GlobalMcpIfMissing
 
 if (-not [string]::IsNullOrWhiteSpace($DockerImage) -and -not [string]::IsNullOrWhiteSpace($AuthToken)) {
     [Environment]::SetEnvironmentVariable("ADO_MCP_AUTH_TOKEN", $AuthToken, "User")
@@ -399,21 +409,25 @@ if ($configureVSCodeNow) {
 }
 
 # -- Claude Code ----------------------------------------------------------------
-$claudeMcpRegistered = $false
 $claudePluginInstalled = $false
 if ($configureClaudeNow) {
     Write-Host "Configuring Claude Code..."
 
     $claude = Get-Command "claude" -ErrorAction SilentlyContinue
     if ($null -eq $claude) {
-        Write-Host "  Claude CLI not found. MCP and plugin were NOT registered. Run manually after installing Claude Code:"
-        Write-Host "  claude mcp add --scope user azure-devops -- powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$launcherTarget`""
+        Write-Host "  Claude CLI not found. Plugin was NOT registered. Run manually after installing Claude Code:"
         Write-Host "  claude plugin marketplace add --scope user `"$repoRoot`""
         Write-Host "  claude plugin install --scope user azure-devops-agents-claude@azure-devops-agents"
     } else {
-        & claude mcp add --scope user azure-devops -- powershell.exe -NoProfile -ExecutionPolicy Bypass -File $launcherTarget
-        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-        $claudeMcpRegistered = $true
+        $mcpList = (& claude mcp list 2>&1) -join "`n"
+        if ($LASTEXITCODE -eq 0 -and $mcpList -match '(?m)^azure-devops:') {
+            & claude mcp remove --scope user azure-devops
+            if ($LASTEXITCODE -eq 0) {
+                Write-Host "  Removed legacy standalone MCP server: azure-devops"
+            } else {
+                Write-Warning "Could not remove legacy standalone MCP server: azure-devops"
+            }
+        }
 
         $marketplaceList = (& claude plugin marketplace list 2>&1) -join "`n"
         if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
@@ -445,14 +459,10 @@ if ($configureClaudeNow) {
 Write-Host ""
 Write-Host "Done. Per-tool summary:"
 if ($configureClaudeNow) {
-    if ($claudeMcpRegistered) {
-        if ($claudePluginInstalled) {
-            Write-Host "  Claude Code : MCP registered + plugin installed + ~/.claude/CLAUDE.md updated"
-        } else {
-            Write-Host "  Claude Code : MCP registered + ~/.claude/CLAUDE.md updated"
-        }
+    if ($claudePluginInstalled) {
+        Write-Host "  Claude Code : plugin installed + plugin MCP active + ~/.claude/CLAUDE.md updated"
     } else {
-        Write-Host "  Claude Code : ~/.claude/CLAUDE.md updated (MCP/plugin pending - run manual commands above)"
+        Write-Host "  Claude Code : ~/.claude/CLAUDE.md updated (plugin pending - run manual commands above)"
     }
 }
 if ($configureCodexNow) {
@@ -470,4 +480,3 @@ if (-not [string]::IsNullOrWhiteSpace($DockerImage)) {
     Write-Host "Service principal: set AZURE_CLIENT_ID, AZURE_CLIENT_SECRET, AZURE_TENANT_ID, then restart all tools."
 }
 Write-Host "Per-repo config  : add .ado-mcp.json -> { ""project"": ""YourProject"", ""team"": ""YourTeam"" }"
-

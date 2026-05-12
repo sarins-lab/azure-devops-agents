@@ -218,11 +218,11 @@ It creates or updates:
 
 - Azure DevOps helper configuration under `~/.ado-mcp`
 - `@azure-devops/mcp` installed globally via npm (for instant MCP server startup)
-- Claude Code plugin and planning context
+- Claude Code plugin and planning context; the plugin owns the Claude MCP server entry
 - Codex planning context under `~/.codex`
 - VS Code Copilot planning prompts and settings
 
-For Claude Code plugin installs, `.mcp.json` starts `scripts/ado-mcp-launcher.mjs`. That dispatcher starts PowerShell on Windows and Bash on macOS/Linux, so the plugin uses the same Azure DevOps MCP launcher on all supported operating systems.
+For Claude Code plugin installs, `.mcp.json` starts `scripts/ado-mcp-launcher.mjs`. That dispatcher starts PowerShell on Windows and Bash on macOS/Linux, so the plugin uses the same Azure DevOps MCP launcher on all supported operating systems. The installer removes any legacy standalone Claude MCP server named `azure-devops` so Claude does not show duplicate Azure DevOps MCP entries.
 
 ## For Maintainers
 

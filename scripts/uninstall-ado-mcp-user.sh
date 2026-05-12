@@ -269,11 +269,12 @@ fi
 if [[ $purge_global -eq 1 ]]; then
   if ! command -v npm >/dev/null 2>&1; then
     echo "WARN: npm not found — cannot uninstall global package." >&2
-  elif npm ls -g --depth=0 @azure-devops/mcp >/dev/null 2>&1; then
-    npm uninstall -g @azure-devops/mcp
-    echo "Uninstalled global package: @azure-devops/mcp"
   else
-    echo "Global package @azure-devops/mcp not installed, skipping."
+    if npm uninstall -g @azure-devops/mcp; then
+      echo "Removed global package if present: @azure-devops/mcp"
+    else
+      echo "WARN: global npm uninstall failed for @azure-devops/mcp." >&2
+    fi
   fi
 fi
 

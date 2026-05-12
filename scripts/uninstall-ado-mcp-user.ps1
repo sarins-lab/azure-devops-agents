@@ -139,40 +139,48 @@ if ($configureVSCode) {
     $promptDir    = Join-Path $adoHome "prompts"
 
     if (Test-Path -LiteralPath $mcpPath) {
-        $mcp = Get-Content -LiteralPath $mcpPath -Raw | ConvertFrom-Json
-        if ($mcp.servers -and $mcp.servers.PSObject.Properties["azure-devops"]) {
-            $mcp.servers.PSObject.Properties.Remove("azure-devops")
-            $mcp | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $mcpPath -Encoding utf8
-            Write-Host "  Removed azure-devops from: $mcpPath"
-        } else {
-            Write-Host "  azure-devops not found in: $mcpPath"
+        try {
+            $mcp = Get-Content -LiteralPath $mcpPath -Raw | ConvertFrom-Json
+            if ($mcp.servers -and $mcp.servers.PSObject.Properties["azure-devops"]) {
+                $mcp.servers.PSObject.Properties.Remove("azure-devops")
+                $mcp | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $mcpPath -Encoding utf8
+                Write-Host "  Removed azure-devops from: $mcpPath"
+            } else {
+                Write-Host "  azure-devops not found in: $mcpPath"
+            }
+        } catch {
+            Write-Warning "Could not parse $mcpPath - skipping MCP update. Remove azure-devops manually. $($_.Exception.Message)"
         }
     } else {
         Write-Host "  VS Code mcp.json not found, skipping."
     }
 
     if (Test-Path -LiteralPath $settingsPath) {
-        $settings = ConvertFrom-JsonOrJsonC -Content (Get-Content -LiteralPath $settingsPath -Raw) -Path $settingsPath
-        $instructionKey = "github.copilot.chat.codeGeneration.instructions"
-        $prop = $settings.PSObject.Properties[$instructionKey]
-        if ($prop -and $prop.Value -is [array]) {
-            $filtered = @($prop.Value | Where-Object { $_.file -ne $copilotCtx })
-            if ($filtered.Count -eq 0) {
-                $settings.PSObject.Properties.Remove($instructionKey)
-            } else {
-                $settings.$instructionKey = $filtered
+        try {
+            $settings = ConvertFrom-JsonOrJsonC -Content (Get-Content -LiteralPath $settingsPath -Raw) -Path $settingsPath
+            $instructionKey = "github.copilot.chat.codeGeneration.instructions"
+            $prop = $settings.PSObject.Properties[$instructionKey]
+            if ($prop -and $prop.Value -is [array]) {
+                $filtered = @($prop.Value | Where-Object { $_.file -ne $copilotCtx })
+                if ($filtered.Count -eq 0) {
+                    $settings.PSObject.Properties.Remove($instructionKey)
+                } else {
+                    $settings.$instructionKey = $filtered
+                }
             }
-        }
-        $promptKey = "chat.promptFilesLocations"
-        $promptProp = $settings.PSObject.Properties[$promptKey]
-        if ($promptProp -and $promptProp.Value -is [psobject]) {
-            $promptProp.Value.PSObject.Properties.Remove($promptDir)
-            if ($promptProp.Value.PSObject.Properties.Count -eq 0) {
-                $settings.PSObject.Properties.Remove($promptKey)
+            $promptKey = "chat.promptFilesLocations"
+            $promptProp = $settings.PSObject.Properties[$promptKey]
+            if ($promptProp -and $promptProp.Value -is [psobject]) {
+                $promptProp.Value.PSObject.Properties.Remove($promptDir)
+                if ($promptProp.Value.PSObject.Properties.Count -eq 0) {
+                    $settings.PSObject.Properties.Remove($promptKey)
+                }
             }
+            $settings | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $settingsPath -Encoding utf8
+            Write-Host "  Updated VS Code settings: $settingsPath"
+        } catch {
+            Write-Warning "Could not parse $settingsPath - skipping settings update. Remove azure-devops entries manually. $($_.Exception.Message)"
         }
-        $settings | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $settingsPath -Encoding utf8
-        Write-Host "  Updated VS Code settings: $settingsPath"
     } else {
         Write-Host "  VS Code settings.json not found, skipping."
     }
@@ -215,12 +223,11 @@ if ($PurgeGlobal) {
     if (-not (Get-Command npm -ErrorAction SilentlyContinue)) {
         Write-Warning "npm not found — cannot uninstall global package."
     } else {
-        $npmLs = & npm ls -g --depth=0 "@azure-devops/mcp" 2>$null
-        if ($LASTEXITCODE -eq 0 -and $npmLs -match "@azure-devops/mcp") {
-            & npm uninstall -g "@azure-devops/mcp"
-            Write-Host "Uninstalled global package: @azure-devops/mcp"
+        & npm uninstall -g "@azure-devops/mcp"
+        if ($LASTEXITCODE -eq 0) {
+            Write-Host "Removed global package if present: @azure-devops/mcp"
         } else {
-            Write-Host "Global package @azure-devops/mcp not installed, skipping."
+            Write-Warning "Global npm uninstall failed for @azure-devops/mcp (exit $LASTEXITCODE)."
         }
     }
 }

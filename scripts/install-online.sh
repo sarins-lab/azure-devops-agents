@@ -397,6 +397,24 @@ vscode_user_dir() {
   esac
 }
 
+install_global_mcp_if_missing() {
+  if [[ -n "$docker_image" ]]; then
+    return 0
+  fi
+
+  if command -v mcp-server-azuredevops >/dev/null 2>&1; then
+    echo "Global @azure-devops/mcp binary already available; skipping npm install."
+    return 0
+  fi
+
+  if command -v npm >/dev/null 2>&1; then
+    echo "Installing @azure-devops/mcp globally..."
+    npm install -g @azure-devops/mcp --silent || echo "WARN: global npm install failed - launcher will fall back to npx." >&2
+  else
+    echo "WARN: npm not found - skipping global install; launcher will use npx." >&2
+  fi
+}
+
 make_temp_dir() {
   local attempt base dir
 
@@ -586,17 +604,6 @@ LAUNCHER
 chmod 700 "$launcher_target"
 echo "Wrote online MCP launcher: $launcher_target"
 
-# Install @azure-devops/mcp globally (npx mode only) so the launcher uses the
-# direct binary rather than npx. Skipped in Docker mode and when npm is unavailable.
-if [[ -z "$docker_image" ]]; then
-  if command -v npm >/dev/null 2>&1; then
-    echo "Installing @azure-devops/mcp globally..."
-    npm install -g @azure-devops/mcp --silent || echo "WARN: global npm install failed — launcher will fall back to npx." >&2
-  else
-    echo "WARN: npm not found — skipping global install; launcher will use npx." >&2
-  fi
-fi
-
 existing_docker=""
 existing_org=""
 if [[ -f "$config_target" ]]; then
@@ -628,6 +635,8 @@ fs.mkdirSync(require("path").dirname(path), { recursive: true });
 fs.writeFileSync(path, `${JSON.stringify(config, null, 2)}\n`, "utf8");
 NODE
 echo "Wrote MCP config: $config_target"
+
+install_global_mcp_if_missing
 
 if [[ -n "$docker_image" && -n "$auth_token" ]]; then
   printf 'export ADO_MCP_AUTH_TOKEN=%s\n' "$(shell_quote "$auth_token")" > "$env_target"
