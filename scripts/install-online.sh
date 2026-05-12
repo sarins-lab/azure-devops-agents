@@ -128,6 +128,11 @@ require_node() {
     echo "Node.js 20 or later is required; found $(node --version 2>/dev/null || echo unknown)." >&2
     exit 1
   fi
+
+  if [[ -z "$docker_image" ]] && ! command -v npx >/dev/null 2>&1; then
+    echo "npx is required for non-Docker MCP mode. Install npm with Node.js 20+ or rerun with --docker-image <image>." >&2
+    exit 1
+  fi
 }
 
 json_get() {
