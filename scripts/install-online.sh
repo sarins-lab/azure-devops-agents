@@ -321,19 +321,32 @@ if (!mcp.servers["azure-devops"] || force) {
   console.log(`  MCP entry already present. Use --force to replace: ${mcpPath}`);
 }
 const settings = readJson(settingsPath);
+let settingsChanged = false;
 const instructionKey = "github.copilot.chat.codeGeneration.instructions";
 const instructions = Array.isArray(settings[instructionKey]) ? settings[instructionKey] : [];
-if (!instructions.some((item) => item && item.file === contextPath)) {
-  instructions.push({ file: contextPath });
+const instructionPresent = instructions.some((item) => item && item.file === contextPath);
+if (instructionPresent && !force) {
+  console.log(`  Copilot instruction already present. Use --force to update: ${settingsPath}`);
+} else {
+  settings[instructionKey] = instructions.filter((item) => !(item && item.file === contextPath));
+  settings[instructionKey].push({ file: contextPath });
+  settingsChanged = true;
 }
-settings[instructionKey] = instructions;
 const promptKey = "chat.promptFilesLocations";
-settings[promptKey] = settings[promptKey] && typeof settings[promptKey] === "object" && !Array.isArray(settings[promptKey])
-  ? settings[promptKey]
-  : {};
-settings[promptKey][promptsPath] = true;
-writeJson(settingsPath, settings);
-console.log(`  Updated VS Code settings: ${settingsPath}`);
+if (!settings[promptKey] || typeof settings[promptKey] !== "object" || Array.isArray(settings[promptKey])) {
+  settings[promptKey] = {};
+  settingsChanged = true;
+}
+if (Object.prototype.hasOwnProperty.call(settings[promptKey], promptsPath) && !force) {
+  console.log(`  VS Code prompt file location already present: ${promptsPath}`);
+} else {
+  settings[promptKey][promptsPath] = true;
+  settingsChanged = true;
+}
+if (settingsChanged) {
+  writeJson(settingsPath, settings);
+  console.log(`  Updated VS Code settings: ${settingsPath}`);
+}
 NODE
 }
 

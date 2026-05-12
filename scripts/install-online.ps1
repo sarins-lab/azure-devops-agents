@@ -194,6 +194,28 @@ function Set-CurrentAndPersistentUserEnvironmentVariable {
     }
 }
 
+function Assert-NodeAndNpxAvailable {
+    $nodeCommand = Get-Command node -ErrorAction SilentlyContinue
+    if ($null -eq $nodeCommand) {
+        throw "Node.js 20 or later is required for non-Docker MCP mode. Install Node.js 20+ or rerun with -DockerImage <image>."
+    }
+
+    $nodeMajorText = (& node -p "Number(process.versions.node.split('.')[0])" 2>$null)
+    $nodeMajor = 0
+    if ($LASTEXITCODE -ne 0 -or -not [int]::TryParse([string]$nodeMajorText, [ref]$nodeMajor) -or $nodeMajor -lt 20) {
+        $nodeVersion = (& node --version 2>$null)
+        if ([string]::IsNullOrWhiteSpace($nodeVersion)) {
+            $nodeVersion = "unknown"
+        }
+        throw "Node.js 20 or later is required for non-Docker MCP mode; found $nodeVersion. Install Node.js 20+ or rerun with -DockerImage <image>."
+    }
+
+    $npxCommand = Get-Command npx -ErrorAction SilentlyContinue
+    if ($null -eq $npxCommand) {
+        throw "npx is required for non-Docker MCP mode. Install npm with Node.js 20+ or rerun with -DockerImage <image>."
+    }
+}
+
 if (-not $PSBoundParameters.ContainsKey("Clients") -and -not [string]::IsNullOrWhiteSpace($env:ADO_MCP_CLIENTS)) {
     $Clients = @($env:ADO_MCP_CLIENTS -split "," | ForEach-Object { $_.Trim() } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
 }
@@ -233,6 +255,10 @@ $script:McpPowerShellCommand = "powershell.exe"
 
 if ([string]::IsNullOrWhiteSpace($Organization)) {
     throw "Azure DevOps organization is required. Pass -Organization <org> or set ADO_MCP_ORG before running this script."
+}
+
+if ([string]::IsNullOrWhiteSpace($DockerImage)) {
+    Assert-NodeAndNpxAvailable
 }
 
 $LauncherScript = @'
