@@ -151,7 +151,7 @@ if ($configureCodex) {
         $text = Get-Content -LiteralPath $codexToml -Raw
         if ($text -match '\[mcp_servers\.azure-devops\]') {
             $text = [regex]::Replace($text, "`n?\[mcp_servers\.azure-devops\]\r?\n[\s\S]*?(?=\n\[|\s*$)", "")
-            Set-Content -LiteralPath $codexToml -Value $text -NoNewline
+            Set-Content -LiteralPath $codexToml -Value $text -Encoding utf8 -NoNewline
             Write-Host "  Removed [mcp_servers.azure-devops] from: $codexToml"
         } else {
             Write-Host "  [mcp_servers.azure-devops] not found in: $codexToml"
@@ -173,9 +173,9 @@ if ($configureClaude -and $configureVSCode -and $configureCodex) {
 
 # ── Optional: global npm package ──────────────────────────────────────────────
 if ($PurgeGlobal) {
-    $npmLs = & npm ls -g --depth=0 @azure-devops/mcp 2>$null
+    $npmLs = & npm ls -g --depth=0 "@azure-devops/mcp" 2>$null
     if ($LASTEXITCODE -eq 0 -and $npmLs -match "@azure-devops/mcp") {
-        & npm uninstall -g @azure-devops/mcp
+        & npm uninstall -g "@azure-devops/mcp"
         Write-Host "Uninstalled global package: @azure-devops/mcp"
     } else {
         Write-Host "Global package @azure-devops/mcp not installed, skipping."

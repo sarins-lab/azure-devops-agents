@@ -181,6 +181,6 @@ $mcpBin = Get-Command mcp-server-azuredevops -ErrorAction SilentlyContinue
 if ($mcpBin) {
     & mcp-server-azuredevops @binArgs
 } else {
-    & npx -y @azure-devops/mcp @binArgs
+    & npx -y "@azure-devops/mcp" @binArgs
 }
 exit $LASTEXITCODE

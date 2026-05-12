@@ -308,7 +308,7 @@ Copy-Item -LiteralPath $launcherSource -Destination $launcherTarget -Force
 # the global install fails (e.g. requires admin rights).
 Write-Host "Installing @azure-devops/mcp globally..."
 try {
-    & npm install -g @azure-devops/mcp --silent
+    & npm install -g "@azure-devops/mcp" --silent
 } catch {
     Write-Warning "Global npm install failed — launcher will fall back to npx. ($_)"
 }

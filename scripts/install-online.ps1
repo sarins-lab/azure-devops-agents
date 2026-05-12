@@ -439,7 +439,7 @@ $mcpBin = Get-Command mcp-server-azuredevops -ErrorAction SilentlyContinue
 if ($mcpBin) {
     & mcp-server-azuredevops @binArgs
 } else {
-    & npx -y @azure-devops/mcp @binArgs
+    & npx -y "@azure-devops/mcp" @binArgs
 }
 exit $LASTEXITCODE
 '@
@@ -801,7 +801,7 @@ Write-Host "Wrote online MCP launcher: $launcherTarget"
 # instead of npx, which has a slow cold-start that causes connection timeouts.
 Write-Host "Installing @azure-devops/mcp globally..."
 try {
-    & npm install -g @azure-devops/mcp --silent
+    & npm install -g "@azure-devops/mcp" --silent
 } catch {
     Write-Warning "Global npm install failed — launcher will fall back to npx. ($_)"
 }

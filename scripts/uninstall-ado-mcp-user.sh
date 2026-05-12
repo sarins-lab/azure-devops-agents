@@ -147,7 +147,10 @@ if [[ $configure_vscode -eq 1 ]]; then
   prompt_dir="$ado_home/prompts"
 
   if [[ -f "$mcp_path" ]]; then
-    node - "$mcp_path" <<'NODE'
+    if ! command -v node >/dev/null 2>&1; then
+      echo "  WARN: Node.js not found — cannot update $mcp_path. Remove azure-devops entry manually." >&2
+    else
+      node - "$mcp_path" <<'NODE'
 const fs = require("fs");
 const path = process.argv[2];
 const mcp = JSON.parse(fs.readFileSync(path, "utf8"));
@@ -159,12 +162,16 @@ if (mcp.servers && mcp.servers["azure-devops"]) {
   console.log(`  azure-devops not found in: ${path}`);
 }
 NODE
+    fi
   else
     echo "  VS Code mcp.json not found, skipping."
   fi
 
   if [[ -f "$settings_path" ]]; then
-    node - "$settings_path" "$copilot_context" "$prompt_dir" <<'NODE'
+    if ! command -v node >/dev/null 2>&1; then
+      echo "  WARN: Node.js not found — cannot update $settings_path. Remove azure-devops entries manually." >&2
+    else
+      node - "$settings_path" "$copilot_context" "$prompt_dir" <<'NODE'
 const fs = require("fs");
 const [settingsPath, contextPath, promptsPath] = process.argv.slice(2);
 const settings = JSON.parse(fs.readFileSync(settingsPath, "utf8"));
@@ -186,6 +193,7 @@ if (settings[promptKey] && typeof settings[promptKey] === "object") {
 fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + "\n", "utf8");
 console.log(`  Updated VS Code settings: ${settingsPath}`);
 NODE
+    fi
   else
     echo "  VS Code settings.json not found, skipping."
   fi
@@ -200,7 +208,10 @@ if [[ $configure_codex -eq 1 ]]; then
   codex_toml="$user_home/.codex/config.toml"
 
   if [[ -f "$codex_toml" ]]; then
-    node - "$codex_toml" <<'NODE'
+    if ! command -v node >/dev/null 2>&1; then
+      echo "  WARN: Node.js not found — cannot update $codex_toml. Remove [mcp_servers.azure-devops] manually." >&2
+    else
+      node - "$codex_toml" <<'NODE'
 const fs = require("fs");
 const path = process.argv[2];
 let text = fs.readFileSync(path, "utf8");
@@ -212,6 +223,7 @@ if (/^\[mcp_servers\.azure-devops\]/m.test(text)) {
   console.log(`  [mcp_servers.azure-devops] not found in: ${path}`);
 }
 NODE
+    fi
   else
     echo "  Codex config.toml not found, skipping."
   fi
