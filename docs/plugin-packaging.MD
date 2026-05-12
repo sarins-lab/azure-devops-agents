@@ -31,7 +31,59 @@ Client packages should not fork the planning rules. They should consume or packa
 
 ## Install Behavior
 
-The installers remain shared:
+### Online installer
+
+`scripts/install-online.ps1` is the full public, clone-free Windows PowerShell
+installer. It is designed for direct online execution:
+
+```powershell
+$env:ADO_MCP_ORG = "<your-org>"
+irm https://raw.githubusercontent.com/sarins-lab/azure-devops-agents/main/scripts/install-online.ps1 | iex
+```
+
+A TinyURL for PowerShell should redirect to:
+
+```text
+https://raw.githubusercontent.com/sarins-lab/azure-devops-agents/main/scripts/install-online.ps1
+```
+
+`scripts/install-online.sh` is the matching self-contained macOS/Linux
+installer:
+
+```bash
+export ADO_MCP_ORG="<your-org>"
+curl -fsSL https://raw.githubusercontent.com/sarins-lab/azure-devops-agents/main/scripts/install-online.sh | bash
+```
+
+A TinyURL for macOS/Linux should redirect to:
+
+```text
+https://raw.githubusercontent.com/sarins-lab/azure-devops-agents/main/scripts/install-online.sh
+```
+
+The PowerShell installer can also be invoked with explicit parameters:
+
+```powershell
+$install = Invoke-RestMethod https://raw.githubusercontent.com/sarins-lab/azure-devops-agents/main/scripts/install-online.ps1
+& ([scriptblock]::Create($install)) -Organization <your-org>
+```
+
+It is intentionally self-contained. It embeds the PowerShell MCP launcher and the
+Codex, VS Code, and Claude planning context, then writes the same user-level MCP
+configuration that the repo-local installer writes. It does not download this
+repository, clone it, or unpack a release archive.
+
+The Bash installer writes the Bash MCP launcher and the user-level Codex, VS
+Code, and Claude context without reading files from a local clone.
+
+The online installer does not install the native Claude plugin package because
+Claude marketplace installs require a local plugin directory. It still registers
+the Claude MCP server when the Claude CLI is available and writes global Claude
+context.
+
+### Repo-local installer
+
+The repo-local installers remain shared:
 
 ```powershell
 .\scripts\install.ps1 -Organization <your-org>

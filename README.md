@@ -70,47 +70,27 @@ az config set core.enable_broker_on_windows=true
 
 ## Install
 
-Run this once from this repository:
+Set your Azure DevOps organization, then run the installer for your platform.
 
-Windows:
-
-```powershell
-.\scripts\install.ps1 -Organization <your-azure-devops-org>
-```
-
-macOS/Linux:
-
-```bash
-bash ./scripts/install.sh --organization <your-azure-devops-org>
-```
-
-Replace `<your-azure-devops-org>` with the name of your Azure DevOps organization.
-
-Example:
+Windows PowerShell:
 
 ```powershell
-.\scripts\install.ps1 -Organization sarins-lab
+$env:ADO_MCP_ORG = "<your-azure-devops-org>"
+irm https://tinyurl.com/yc3wvu6u | iex
 ```
+
+Linux/macOS:
 
 ```bash
-bash ./scripts/install.sh --organization sarins-lab
+export ADO_MCP_ORG="<your-azure-devops-org>"
+curl -fsSL https://tinyurl.com/bdfuef4w | bash
 ```
 
-By default, this configures Claude Code, VS Code Copilot, and Codex.
+After install, restart Codex, VS Code, or Claude Code so each tool reloads its
+user-level MCP configuration.
 
-To install for only one tool:
-
-```powershell
-.\scripts\install.ps1 -Organization <your-org> -Clients Claude
-.\scripts\install.ps1 -Organization <your-org> -Clients VSCode
-.\scripts\install.ps1 -Organization <your-org> -Clients Codex
-```
-
-```bash
-bash ./scripts/install.sh --organization <your-org> --clients Claude
-bash ./scripts/install.sh --organization <your-org> --clients VSCode
-bash ./scripts/install.sh --organization <your-org> --clients Codex
-```
+For Codex-only installs, raw GitHub URLs, Docker/PAT mode, service principal
+auth, or repo-local development installs, see [docs/install.MD](docs/install.MD).
 
 ## Connect A Repository To An Azure DevOps Project
 

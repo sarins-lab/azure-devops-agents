@@ -112,10 +112,12 @@ if ($Publish -and -not $AllowDirty) {
 
 Test-PowerShellFile -Path "scripts\install.ps1"
 Test-PowerShellFile -Path "scripts\install-ado-mcp-user.ps1"
+Test-PowerShellFile -Path "scripts\install-online.ps1"
 Test-PowerShellFile -Path "scripts\ado-mcp-launcher.ps1"
 Test-PowerShellFile -Path "scripts\deploy.ps1"
 Test-BashFile -Path "scripts\install.sh"
 Test-BashFile -Path "scripts\install-ado-mcp-user.sh"
+Test-BashFile -Path "scripts\install-online.sh"
 Test-BashFile -Path "scripts\ado-mcp-launcher.sh"
 Test-NodeFile -Path "scripts\ado-mcp-launcher.mjs"
 
