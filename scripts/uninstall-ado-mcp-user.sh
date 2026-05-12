@@ -88,7 +88,8 @@ if (!text.includes(start)) {
 const escapedStart = start.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const escapedEnd   = end.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 text = text.replace(new RegExp(`\\n?${escapedStart}[\\s\\S]*?${escapedEnd}\\n?`), "\n");
-text = text.replace(/\n{3,}/g, "\n\n").trimEnd() + (text.trimEnd() !== "" ? "\n" : "");
+const trimmed = text.replace(/\n{3,}/g, "\n\n").trimEnd();
+text = trimmed !== "" ? trimmed + "\n" : "";
 fs.writeFileSync(path, text, "utf8");
 console.log(`  Removed block from: ${path}`);
 NODE
@@ -242,7 +243,9 @@ fi
 
 # ── Optional: global npm package ──────────────────────────────────────────────
 if [[ $purge_global -eq 1 ]]; then
-  if npm ls -g --depth=0 @azure-devops/mcp >/dev/null 2>&1; then
+  if ! command -v npm >/dev/null 2>&1; then
+    echo "WARN: npm not found — cannot uninstall global package." >&2
+  elif npm ls -g --depth=0 @azure-devops/mcp >/dev/null 2>&1; then
     npm uninstall -g @azure-devops/mcp
     echo "Uninstalled global package: @azure-devops/mcp"
   else
