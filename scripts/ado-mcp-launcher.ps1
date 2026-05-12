@@ -169,11 +169,17 @@ if ($authentication -eq "azcli") {
     }
 }
 
-$npxArgs = @("-y", "@azure-devops/mcp", $organization, "--authentication", $authentication)
+$binArgs = @($organization, "--authentication", $authentication)
 foreach ($domain in $domains) {
-    $npxArgs += "-d"
-    $npxArgs += [string]$domain
+    $binArgs += "-d"
+    $binArgs += [string]$domain
 }
 
-& npx @npxArgs
+# Prefer the globally installed binary for instant startup; fall back to npx.
+$mcpBin = Get-Command mcp-server-azuredevops -ErrorAction SilentlyContinue
+if ($mcpBin) {
+    & mcp-server-azuredevops @binArgs
+} else {
+    & npx -y @azure-devops/mcp @binArgs
+}
 exit $LASTEXITCODE

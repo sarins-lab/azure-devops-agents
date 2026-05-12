@@ -286,6 +286,13 @@ if ($configureVSCodeNow -and -not (Test-Path -LiteralPath $promptSourceDir)) {
 New-Item -ItemType Directory -Force -Path $adoHome | Out-Null
 Copy-Item -LiteralPath $launcherSource -Destination $launcherTarget -Force
 
+# Install the MCP package globally so the launcher can use the direct binary
+# instead of npx, which has a slow cold-start that causes connection timeouts.
+if (-not (Get-Command mcp-server-azuredevops -ErrorAction SilentlyContinue)) {
+    Write-Host "Installing @azure-devops/mcp globally for faster MCP startup..."
+    & npm install -g @azure-devops/mcp --silent
+}
+
 if ((Test-Path -LiteralPath $configTarget) -and -not $Force) {
     $existingConfig  = Read-JsonFile -Path $configTarget
     $existingDocker  = Get-StringValue -Object $existingConfig -Name "dockerImage"

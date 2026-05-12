@@ -283,6 +283,13 @@ mkdir -p "$ado_home"
 cp "$repo_root/scripts/ado-mcp-launcher.sh" "$launcher_target"
 chmod 700 "$launcher_target"
 
+# Install the MCP package globally so the launcher can use the direct binary
+# instead of npx, which has a slow cold-start that causes connection timeouts.
+if ! command -v mcp-server-azuredevops >/dev/null 2>&1; then
+  echo "Installing @azure-devops/mcp globally for faster MCP startup..."
+  npm install -g @azure-devops/mcp --silent
+fi
+
 existing_docker=""
 existing_org=""
 if [[ -f "$config_target" ]]; then
