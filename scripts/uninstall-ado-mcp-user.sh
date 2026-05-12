@@ -175,7 +175,31 @@ NODE
       node - "$settings_path" "$copilot_context" "$prompt_dir" <<'NODE'
 const fs = require("fs");
 const [settingsPath, contextPath, promptsPath] = process.argv.slice(2);
-const settings = JSON.parse(fs.readFileSync(settingsPath, "utf8"));
+
+// VS Code settings.json is JSONC — strip // line comments, /* block comments */,
+// and trailing commas before parsing so we don't abort on a common file format.
+function stripJsonc(text) {
+  let out = "", inStr = false, escaped = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i], next = text[i + 1];
+    if (escaped)            { out += ch; escaped = false; continue; }
+    if (inStr && ch === "\\") { out += ch; escaped = true; continue; }
+    if (ch === '"')           { inStr = !inStr; out += ch; continue; }
+    if (inStr)                { out += ch; continue; }
+    if (ch === "/" && next === "/") { while (i < text.length && text[i] !== "\n") i++; continue; }
+    if (ch === "/" && next === "*") { i += 2; while (i < text.length && !(text[i] === "*" && text[i+1] === "/")) i++; i++; continue; }
+    out += ch;
+  }
+  return out.replace(/,(\s*[}\]])/g, "$1");
+}
+
+let settings;
+try {
+  settings = JSON.parse(stripJsonc(fs.readFileSync(settingsPath, "utf8")));
+} catch (err) {
+  console.error(`  WARN: Could not parse ${settingsPath} — skipping settings update. Remove azure-devops entries manually. (${err.message})`);
+  process.exit(0);
+}
 
 const instructionKey = "github.copilot.chat.codeGeneration.instructions";
 if (Array.isArray(settings[instructionKey])) {
