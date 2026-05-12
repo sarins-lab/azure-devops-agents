@@ -4,6 +4,8 @@ param(
     [string[]]$Clients = @("All"),
     [string]$Authentication = "azcli",
     [string[]]$Domains = @("core", "work", "work-items", "repositories", "wiki"),
+    [string]$Project = $env:ADO_MCP_PROJECT,
+    [string]$Team = $env:ADO_MCP_TEAM,
     [string]$DockerImage = "",
     [string]$AuthToken = "",
     [switch]$Force
@@ -349,12 +351,26 @@ if ([string]::IsNullOrWhiteSpace($authentication)) {
 
 $dockerImage = Get-StringValue -Object $userConfig -Name "dockerImage"
 
-$project = Get-StringValue -Object $repoConfig -Name "project"
+$project = Get-StringValue -Object $userConfig -Name "project"
+if ([string]::IsNullOrWhiteSpace($project)) {
+    $project = $env:ADO_MCP_PROJECT
+}
+$repoProject = Get-StringValue -Object $repoConfig -Name "project"
+if (-not [string]::IsNullOrWhiteSpace($repoProject)) {
+    $project = $repoProject
+}
 if (-not [string]::IsNullOrWhiteSpace($project)) {
     $env:ado_mcp_project = $project
 }
 
-$team = Get-StringValue -Object $repoConfig -Name "team"
+$team = Get-StringValue -Object $userConfig -Name "team"
+if ([string]::IsNullOrWhiteSpace($team)) {
+    $team = $env:ADO_MCP_TEAM
+}
+$repoTeam = Get-StringValue -Object $repoConfig -Name "team"
+if (-not [string]::IsNullOrWhiteSpace($repoTeam)) {
+    $team = $repoTeam
+}
 if (-not [string]::IsNullOrWhiteSpace($team)) {
     $env:ado_mcp_team = $team
 }
@@ -451,9 +467,15 @@ Use Microsoft's official `@azure-devops/mcp` package through the `azure-devops` 
 
 Tool names use the `mcp_ado_*` naming pattern.
 
+Use RUP-style SDLC concepts as the planning model: Stakeholder Request, Functional Requirement, Non-Functional Requirement, UX Artifact, Technical Requirement, Architecture, Technical Documentation, Delivery Slice, and Task.
+
+Architecture must be cohesive: boundaries, components, runtime flows, deployment, data, security, operations, decisions, tradeoffs, and open questions. Mermaid diagrams for Azure DevOps wiki must use ::: mermaid blocks, graph TD; or graph LR; for flowcharts, simple node IDs, quoted ASCII labels, no HTML, no Markdown labels, no angle-bracket placeholders, no raw Unicode symbols, and no GitHub-style Mermaid code fences.
+
+Before writing, call `mcp_ado_wit_list_backlogs` and `mcp_ado_wit_get_work_item_type` to derive the active Azure DevOps process profile.
+
 `mcp_ado_wit_add_child_work_items` creates child work items and parent links. It supports title, description, area path, iteration path, and Markdown/HTML format.
 
-It does not set fields such as Acceptance Criteria, Story Points, or Tags. Add those afterward with `mcp_ado_wit_update_work_item`.
+It does not set Acceptance Criteria, Story Points, Effort, Size, Requirement Type, Tags, or custom fields. Add those afterward with `mcp_ado_wit_update_work_item` only when the target work item type exposes those fields.
 
 Use `mcp_ado_wit_work_items_link` only to repair or add links after creation.
 
@@ -462,109 +484,55 @@ For backlog lookup, call `mcp_ado_wit_list_backlogs` first, then call `mcp_ado_w
 For wiki lookup, use `mcp_ado_wiki_list_wikis`, `mcp_ado_wiki_list_pages`, `mcp_ado_wiki_get_page`, and `mcp_ado_wiki_get_page_content`.
 '@
 
-$PlanStory = @'
-# plan-story
-
-Create one Azure DevOps User Story under an existing Feature.
-
-1. Load context. If the prompt contains `under feature <id>`, call `mcp_ado_wit_get_work_item` for that Feature. If no Feature ID is specified, ask for the ADO Feature ID before creating anything.
-2. BA phase. Draft one story in `As a [persona] I want [goal] so that [value]` format with 2-4 Given/When/Then acceptance criteria and an explicit out-of-scope boundary. Pause for confirmation.
-3. SA phase. Add one implementation note covering what changes, which service owns it, how it integrates, and the key technical decision. Pause for confirmation.
-4. PM phase. Estimate Fibonacci story points, recommend a sprint using `mcp_ado_work_list_team_iterations` and `mcp_ado_work_get_team_capacity`, and flag if the story should be split. Pause before creating anything in ADO.
-5. Create after confirmation with `mcp_ado_wit_add_child_work_items` under the Feature, then use `mcp_ado_wit_update_work_item` for Acceptance Criteria and Story Points.
-6. Read back with `mcp_ado_wit_get_work_item`. If the parent link is missing, call `mcp_ado_wit_work_items_link`.
-'@
-
-$PlanFeature = @'
-# plan-feature
-
-Run the BA, SA, Architect, and PM planning flow for one Feature, then create linked Azure DevOps work items.
-
-1. Load context. If a Feature ID is provided, call `mcp_ado_wit_get_work_item` for the Feature and parent Epic. If only a description is provided, ask for the parent Epic ID before creating anything.
-2. BA phase. Decompose the Feature into 2-6 User Stories with Given/When/Then acceptance criteria and explicit out-of-scope boundaries. Pause for confirmation.
-3. SA phase. Produce a feature-level technical design and per-story implementation notes. Ground the design with official repo tools. Pause for confirmation.
-4. Architect phase. Read prior ADR context with wiki tools. Write ADRs for significant decisions and audit cross-cutting concerns. Pause for confirmation.
-5. PM phase. Estimate story points, order by dependency and value, and assign stories to sprints using team iteration and capacity tools. Pause before creating anything in ADO.
-6. Create parent-before-child with `mcp_ado_wit_add_child_work_items`; enrich fields with `mcp_ado_wit_update_work_item`; verify every link.
-'@
-
-$PlanEpic = @'
-# plan-epic
-
-Run the full BA, SA, Architect, and PM planning flow for an Epic, then create linked Azure DevOps Features, User Stories, and ADR pages.
-
-1. Load context. If an Epic ID is provided, call `mcp_ado_wit_get_work_item` for the Epic. If only a description is provided, ask whether to create a new Epic or plan against an existing Epic.
-2. BA phase. Decompose the Epic into Features and User Stories with Given/When/Then acceptance criteria. Pause for confirmation.
-3. SA phase. Add technical design to each Feature and implementation notes to each Story. Ground the design in repositories using official repo tools. Pause for confirmation.
-4. Architect phase. Read existing ADRs with the wiki tool sequence. Write new ADRs and cross-cutting concern findings. Pause for confirmation.
-5. PM phase. Estimate story points, order by dependency and value, and assign stories to sprints. Pause before creating anything in ADO.
-6. Create items parent-before-child, then verify traceability with `mcp_ado_wit_get_work_item`.
-'@
-
 $CodexContext = @'
-# Azure DevOps - Sprint Planning (azure-devops-agents)
+# Azure DevOps RUP Planning
 
 The `azure-devops` MCP server is configured at user level via `~/.codex/config.toml`.
-Place `.ado-mcp.json` in any repo root to specify `project` and `team`; the launcher injects them automatically.
+The installer stores a default `project` and optional `team` in `~/.ado-mcp/config.json`. Place `.ado-mcp.json` in any repo root to override `project` and `team`; the launcher injects the resolved values automatically.
 
-Epic -> Feature -> User Story -> Task
+Plan using RUP-style concepts: Stakeholder Request, Functional Requirement, Non-Functional Requirement, UX Artifact, Technical Requirement, Architecture, Technical Documentation, Delivery Slice, and Task.
 
-All items must be created with parent links. Never leave a work item parentless.
+Preferred routes: `/capture-request`, `/define-requirements`, `/design-ux`, `/plan-requirement`, `/document-solution`, `/plan-delivery`, `/plan-task`.
 
-Run the planning workflow automatically when planning intent is detected. Also recognize `/plan-story`, `/plan-feature`, and `/plan-epic` as routing instructions. Do not create Azure DevOps work items until the user confirms the plan.
+Natural planning phrases such as "I want to", "we need to", "setup", "build", "design", "implement", "secure", "expose", "document", "diagram", and "break down" should trigger planning even when Azure DevOps or RUP is not mentioned.
+
+Before implementation, repository edits, deployment, or configuration work starts, verify traceability to an existing approved Azure DevOps work item or confirmed RUP planning artifact. If the requested work is not already represented in Azure DevOps, capture it as a new Stakeholder Request or Change Request and run the SDLC workflow first. User-facing work must include UX or an explicit UX-not-applicable decision.
+
+Architecture must be cohesive, not a technology list. Technical documentation must not introduce architecture decisions. Mermaid diagrams for Azure DevOps wiki must use ::: mermaid blocks, graph TD; or graph LR; for flowcharts, simple node IDs, quoted ASCII labels, no HTML, no Markdown labels, no angle-bracket placeholders, no raw Unicode symbols, and no GitHub-style Mermaid code fences.
+
+Do not create Azure DevOps work items until the user confirms the plan.
 '@
 
 $ClaudeContext = @'
-# Azure DevOps - Sprint Planning (azure-devops-agents)
+# Azure DevOps RUP Planning
 
-Use the `azure-devops` MCP server for Azure DevOps planning work. Place `.ado-mcp.json` in any repo root to specify `project` and `team`; the launcher injects them automatically.
+Use the `azure-devops` MCP server for Azure DevOps planning work. The installer stores a default `project` and optional `team` in `~/.ado-mcp/config.json`. Place `.ado-mcp.json` in any repo root to override `project` and `team`; the launcher injects the resolved values automatically.
 
-Epic -> Feature -> User Story -> Task
+Plan using RUP-style concepts: Stakeholder Request, Functional Requirement, Non-Functional Requirement, UX Artifact, Technical Requirement, Architecture, Technical Documentation, Delivery Slice, and Task.
 
-Pause for user confirmation after each planning phase. Never create Azure DevOps work items until the user confirms the plan.
+Natural planning phrases such as "I want to", "we need to", "setup", "build", "design", "implement", "secure", "expose", "document", "diagram", and "break down" should trigger planning even when Azure DevOps or RUP is not mentioned.
+
+Before implementation, repository edits, deployment, or configuration work starts, verify traceability to an existing approved Azure DevOps work item or confirmed RUP planning artifact. If the requested work is not already represented in Azure DevOps, capture it as a new Stakeholder Request or Change Request and run the SDLC workflow first. User-facing work must include UX or an explicit UX-not-applicable decision.
+
+Architecture must be cohesive, not a technology list. Technical documentation must not introduce architecture decisions. Mermaid diagrams for Azure DevOps wiki must use ::: mermaid blocks, graph TD; or graph LR; for flowcharts, simple node IDs, quoted ASCII labels, no HTML, no Markdown labels, no angle-bracket placeholders, no raw Unicode symbols, and no GitHub-style Mermaid code fences.
+
+Pause after each SDLC role phase. Never create Azure DevOps work items until the user confirms the plan.
 '@
 
 $CopilotContext = @'
-# Azure DevOps Sprint Planning
+# Azure DevOps RUP Planning
 
-Use the `azure-devops` MCP server for all Azure DevOps operations. The launcher reads `.ado-mcp.json` from the repo root to determine project and team automatically.
+Use the `azure-devops` MCP server for all Azure DevOps operations. The installer stores a default project and optional team in `~/.ado-mcp/config.json`; the launcher reads `.ado-mcp.json` from the repo root to override those values when present.
 
-Epic -> Feature -> User Story -> Task
+Plan using RUP-style concepts: Stakeholder Request, Functional Requirement, Non-Functional Requirement, UX Artifact, Technical Requirement, Architecture, Technical Documentation, Delivery Slice, and Task.
 
-Always create items with parent links. Never leave a work item parentless. Recognize `/plan-epic`, `/plan-feature`, `/plan-story`, and natural planning intent.
-'@
+Recognize `/capture-request`, `/define-requirements`, `/design-ux`, `/plan-requirement`, `/document-solution`, `/plan-delivery`, `/plan-task`, and natural planning intent.
 
-$PromptPlanStory = @'
----
-name: plan-story
-description: Create one Azure DevOps user story with acceptance criteria, implementation notes, estimate, sprint recommendation, and parent traceability.
-argument-hint: <story-description> [under feature <feature-id>]
-tools: ["azure-devops/*"]
----
+Natural planning phrases such as "I want to", "we need to", "setup", "build", "design", "implement", "secure", "expose", "document", "diagram", and "break down" should trigger planning even when Azure DevOps or RUP is not mentioned.
 
-Create a single well-formed Azure DevOps User Story under the specified Feature. Follow the embedded plan-story workflow from the Azure DevOps Sprint Planning context. Do not create anything until the user confirms.
-'@
+Before implementation, repository edits, deployment, or configuration work starts, verify traceability to an existing approved Azure DevOps work item or confirmed RUP planning artifact. If the requested work is not already represented in Azure DevOps, capture it as a new Stakeholder Request or Change Request and run the SDLC workflow first. User-facing work must include UX or an explicit UX-not-applicable decision.
 
-$PromptPlanFeature = @'
----
-name: plan-feature
-description: Plan one Azure DevOps feature with stories, implementation notes, ADR guidance, estimate, sprint assignment, and traceability.
-argument-hint: <feature-id or feature-description> [under epic <epic-id>]
-tools: ["azure-devops/*"]
----
-
-Plan a feature using BA, SA, Architect, and PM phases. Follow the embedded plan-feature workflow from the Azure DevOps Sprint Planning context. Do not create anything until the user confirms.
-'@
-
-$PromptPlanEpic = @'
----
-name: plan-epic
-description: Plan one Azure DevOps epic with features, stories, ADR guidance, estimates, sprint assignment, and traceability.
-argument-hint: <epic-id or epic-description>
-tools: ["azure-devops/*"]
----
-
-Plan an epic using BA, SA, Architect, and PM phases. Follow the embedded plan-epic workflow from the Azure DevOps Sprint Planning context. Do not create anything until the user confirms.
+Architecture must be cohesive, not a technology list. Technical documentation must not introduce architecture decisions. Mermaid diagrams for Azure DevOps wiki must use ::: mermaid blocks, graph TD; or graph LR; for flowcharts, simple node IDs, quoted ASCII labels, no HTML, no Markdown labels, no angle-bracket placeholders, no raw Unicode symbols, and no GitHub-style Mermaid code fences.
 '@
 
 function Join-TextSections {
@@ -632,6 +600,20 @@ function Get-McpServerJson {
     }
 }
 
+function Get-NpmCommandPath {
+    $npmCmd = Get-Command npm.cmd -ErrorAction SilentlyContinue
+    if ($npmCmd) {
+        return $npmCmd.Source
+    }
+
+    $npmCmd = Get-Command npm -ErrorAction SilentlyContinue
+    if ($npmCmd) {
+        return $npmCmd.Source
+    }
+
+    return $null
+}
+
 function Install-GlobalMcpIfMissing {
     if (-not [string]::IsNullOrWhiteSpace($DockerImage)) {
         return
@@ -643,10 +625,10 @@ function Install-GlobalMcpIfMissing {
         return
     }
 
-    $npmCmd = Get-Command npm -ErrorAction SilentlyContinue
-    if ($npmCmd) {
+    $npmCommandPath = Get-NpmCommandPath
+    if ($npmCommandPath) {
         Write-Host "Installing @azure-devops/mcp globally..."
-        & npm install -g "@azure-devops/mcp" --silent
+        & $npmCommandPath install -g "@azure-devops/mcp" --silent
         if ($LASTEXITCODE -ne 0) {
             Write-Warning "Global npm install failed (exit $LASTEXITCODE) - launcher will fall back to npx."
         }
@@ -758,46 +740,38 @@ function Merge-VSCodeCopilotInstructions {
     Write-Host "  Added Copilot instruction reference: $SettingsPath"
 }
 
-function Merge-VSCodePromptFileLocation {
+function Remove-LegacyVSCodePromptFiles {
     param([string]$SettingsPath, [string]$PromptDirectory)
-
-    $parent = Split-Path -Parent $SettingsPath
-    New-Item -ItemType Directory -Force -Path $parent | Out-Null
 
     if (Test-Path -LiteralPath $SettingsPath) {
         $json = Read-JsonFile -Path $SettingsPath
-        if ($null -eq $json) {
-            $json = [pscustomobject]@{}
+        if ($null -ne $json) {
+            $key = "chat.promptFilesLocations"
+            $prop = $json.PSObject.Properties[$key]
+            $changed = $false
+            if ($null -ne $prop -and $null -ne $prop.Value -and $prop.Value -is [pscustomobject]) {
+                $locations = $prop.Value
+                if ($null -ne $locations.PSObject.Properties[$PromptDirectory]) {
+                    $locations.PSObject.Properties.Remove($PromptDirectory)
+                    $changed = $true
+                    Write-Host "  Removed legacy VS Code prompt location: $PromptDirectory"
+                }
+                if (@($locations.PSObject.Properties).Count -eq 0) {
+                    $json.PSObject.Properties.Remove($key)
+                    $changed = $true
+                    Write-Host "  Removed empty VS Code prompt location setting"
+                }
+            }
+            if ($changed) {
+                Write-Utf8NoBomFile -Path $SettingsPath -Value (($json | ConvertTo-Json -Depth 12) + "`n") -NoNewline
+            }
         }
-    } else {
-        $json = [pscustomobject]@{}
     }
 
-    $key = "chat.promptFilesLocations"
-    $prop = $json.PSObject.Properties[$key]
-    if ($null -eq $prop -or $null -eq $prop.Value -or -not ($prop.Value -is [pscustomobject])) {
-        $locations = [pscustomobject]@{}
-        if ($null -ne $prop) {
-            $prop.Value = $locations
-        } else {
-            $json | Add-Member -NotePropertyName $key -NotePropertyValue $locations
-        }
-    } else {
-        $locations = $prop.Value
+    if (Test-Path -LiteralPath $PromptDirectory) {
+        Remove-Item -LiteralPath $PromptDirectory -Recurse -Force
+        Write-Host "  Removed legacy VS Code prompts: $PromptDirectory"
     }
-
-    if ($null -ne $locations.PSObject.Properties[$PromptDirectory]) {
-        if (-not $Force) {
-            Write-Host "  VS Code prompt file location already present: $PromptDirectory"
-            return
-        }
-        $locations.PSObject.Properties[$PromptDirectory].Value = $true
-    } else {
-        $locations | Add-Member -NotePropertyName $PromptDirectory -NotePropertyValue $true
-    }
-
-    Write-Utf8NoBomFile -Path $SettingsPath -Value (($json | ConvertTo-Json -Depth 12) + "`n") -NoNewline
-    Write-Host "  Added VS Code prompt file location: $PromptDirectory"
 }
 
 $configureAll = $Clients -contains "All"
@@ -810,15 +784,28 @@ $adoHome = Join-Path $userHome ".ado-mcp"
 $launcherTarget = Join-Path $adoHome "ado-mcp.ps1"
 $configTarget = Join-Path $adoHome "config.json"
 $copilotTarget = Join-Path $adoHome "copilot-context.md"
-$promptDir = Join-Path $adoHome "prompts"
 
-$codexContextBlock = Join-TextSections -Sections @($CodexContext, $PlanStory, $PlanFeature, $PlanEpic, $McpRules)
+$codexContextBlock = Join-TextSections -Sections @($CodexContext, $McpRules)
 $claudeContextBlock = Join-TextSections -Sections @($ClaudeContext, $McpRules)
-$copilotContextFile = Join-TextSections -Sections @($CopilotContext, $PlanStory, $PlanFeature, $PlanEpic, $McpRules)
+$copilotContextFile = Join-TextSections -Sections @($CopilotContext, $McpRules)
 
 New-Item -ItemType Directory -Force -Path $adoHome | Out-Null
 Write-Utf8NoBomFile -Path $launcherTarget -Value ($LauncherScript.TrimEnd() + "`n") -NoNewline
 Write-Host "Wrote online MCP launcher: $launcherTarget"
+
+$existingConfigForDefaults = Read-JsonFile -Path $configTarget
+if ([string]::IsNullOrWhiteSpace($Project)) {
+    $Project = Get-StringValue -Object $existingConfigForDefaults -Name "project"
+}
+if ([string]::IsNullOrWhiteSpace($Team)) {
+    $Team = Get-StringValue -Object $existingConfigForDefaults -Name "team"
+}
+if ([string]::IsNullOrWhiteSpace($Project) -and $Host.Name -ne "Default Host") {
+    $Project = Read-Host "Default Azure DevOps project (optional; repo .ado-mcp.json overrides)"
+}
+if (-not [string]::IsNullOrWhiteSpace($Project) -and [string]::IsNullOrWhiteSpace($Team) -and $Host.Name -ne "Default Host") {
+    $Team = Read-Host "Default Azure DevOps team (optional; repo .ado-mcp.json overrides)"
+}
 
 if ((Test-Path -LiteralPath $configTarget) -and -not $Force) {
     $existingConfig = Read-JsonFile -Path $configTarget
@@ -826,14 +813,22 @@ if ((Test-Path -LiteralPath $configTarget) -and -not $Force) {
     $incomingDocker = if ([string]::IsNullOrWhiteSpace($DockerImage)) { $null } else { $DockerImage }
     $dockerMismatch = ($existingDocker -ne $incomingDocker)
     $orgMismatch = (Get-StringValue -Object $existingConfig -Name "organization") -ne $Organization
+    $projectMismatch = (Get-StringValue -Object $existingConfig -Name "project") -ne $(if ([string]::IsNullOrWhiteSpace($Project)) { $null } else { $Project })
+    $teamMismatch = (Get-StringValue -Object $existingConfig -Name "team") -ne $(if ([string]::IsNullOrWhiteSpace($Team)) { $null } else { $Team })
 
-    if ($dockerMismatch -or $orgMismatch) {
+    if ($dockerMismatch -or $orgMismatch -or $projectMismatch -or $teamMismatch) {
         throw "Config already exists with different settings. Use -Force to overwrite: $configTarget"
     }
     Write-Host "MCP config already exists and matches - skipping: $configTarget"
 } else {
     $configAuthentication = if ([string]::IsNullOrWhiteSpace($DockerImage)) { $Authentication } else { "envvar" }
     $config = [ordered]@{ organization = $Organization; authentication = $configAuthentication }
+    if (-not [string]::IsNullOrWhiteSpace($Project)) {
+        $config.project = $Project
+    }
+    if (-not [string]::IsNullOrWhiteSpace($Team)) {
+        $config.team = $Team
+    }
     if ($Domains.Count -gt 0) {
         $config.domains = $Domains
     }
@@ -895,52 +890,35 @@ if ($configureVSCodeNow) {
     $vsCodeUserDir = Join-Path $env:APPDATA "Code\User"
     $vsCodeMcpPath = Join-Path $vsCodeUserDir "mcp.json"
     $vsCodeSettingsPath = Join-Path $vsCodeUserDir "settings.json"
+    $legacyPromptDir = Join-Path $adoHome "prompts"
 
     Write-Utf8NoBomFile -Path $copilotTarget -Value ($copilotContextFile.TrimEnd() + "`n") -NoNewline
-    New-Item -ItemType Directory -Force -Path $promptDir | Out-Null
-    Write-Utf8NoBomFile -Path (Join-Path $promptDir "plan-story.prompt.md") -Value ($PromptPlanStory.TrimEnd() + "`n") -NoNewline
-    Write-Utf8NoBomFile -Path (Join-Path $promptDir "plan-feature.prompt.md") -Value ($PromptPlanFeature.TrimEnd() + "`n") -NoNewline
-    Write-Utf8NoBomFile -Path (Join-Path $promptDir "plan-epic.prompt.md") -Value ($PromptPlanEpic.TrimEnd() + "`n") -NoNewline
 
     Merge-VSCodeMcpServer -Path $vsCodeMcpPath -LauncherPath $launcherTarget
     Merge-VSCodeCopilotInstructions -SettingsPath $vsCodeSettingsPath -ContextFilePath $copilotTarget
-    Merge-VSCodePromptFileLocation -SettingsPath $vsCodeSettingsPath -PromptDirectory $promptDir
+    Remove-LegacyVSCodePromptFiles -SettingsPath $vsCodeSettingsPath -PromptDirectory $legacyPromptDir
 }
 
-$claudeMcpRegistered = $false
 if ($configureClaudeNow) {
     Write-Host "Configuring Claude Code..."
 
-    $claude = Get-Command "claude" -ErrorAction SilentlyContinue
-    if ($null -eq $claude) {
-        Write-Host "  Claude CLI not found. MCP registration is pending."
-        Write-Host "  Run manually after installing Claude Code:"
-        Write-Host "  claude mcp add --scope user azure-devops -- $script:McpPowerShellCommand -NoProfile -ExecutionPolicy Bypass -File `"$launcherTarget`""
-    } else {
-        & claude mcp add --scope user azure-devops -- $script:McpPowerShellCommand -NoProfile -ExecutionPolicy Bypass -File $launcherTarget
-        if ($LASTEXITCODE -ne 0) {
-            exit $LASTEXITCODE
-        }
-        $claudeMcpRegistered = $true
-    }
+    Write-Host "  The online installer writes ~/.claude/CLAUDE.md only."
+    Write-Host "  Installing the Claude plugin-owned MCP server requires a local repo checkout."
+    Write-Host "  Use scripts/install.ps1 or scripts/install.sh from a clone to install azure-devops-agents-claude."
 
     Merge-MarkdownBlock -Path (Join-Path $userHome ".claude\CLAUDE.md") -MarkerName "azure-devops-agents" -Content $claudeContextBlock
 }
 
 Write-Host ""
-Write-Host "Done. Per-tool summary:"
+Write-Host "Done. Client summary:"
 if ($configureClaudeNow) {
-    if ($claudeMcpRegistered) {
-        Write-Host "  Claude Code : MCP registered + ~/.claude/CLAUDE.md updated"
-    } else {
-        Write-Host "  Claude Code : ~/.claude/CLAUDE.md updated (MCP registration pending if Claude CLI was absent)"
-    }
+    Write-Host "  Claude Code : ~/.claude/CLAUDE.md updated (plugin install requires a local repo checkout)"
 }
 if ($configureCodexNow) {
     Write-Host "  Codex       : MCP registered + ~/.codex/AGENTS.md updated"
 }
 if ($configureVSCodeNow) {
-    Write-Host "  VS Code     : MCP registered + Copilot instruction + prompt files added"
+    Write-Host "  VS Code     : MCP registered + Copilot instruction added"
 }
 Write-Host ""
 if (-not [string]::IsNullOrWhiteSpace($DockerImage)) {
@@ -950,3 +928,4 @@ if (-not [string]::IsNullOrWhiteSpace($DockerImage)) {
     Write-Host "Service principal: set AZURE_CLIENT_ID, AZURE_CLIENT_SECRET, AZURE_TENANT_ID, then restart all tools."
 }
 Write-Host "Per-repo config  : add .ado-mcp.json -> { ""project"": ""YourProject"", ""team"": ""YourTeam"" }"
+Write-Host "Project default  : stored in ~/.ado-mcp/config.json; repo .ado-mcp.json overrides it when present."

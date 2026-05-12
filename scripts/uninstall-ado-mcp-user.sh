@@ -1,6 +1,57 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+restore_interactive_shell_path() {
+  if command -v node >/dev/null 2>&1 && command -v npm >/dev/null 2>&1; then
+    return 0
+  fi
+
+  local nvm_bin=""
+  nvm_bin="$(printf '%s\n' "$HOME"/.nvm/versions/node/*/bin 2>/dev/null | sort -V | tail -n 1 || true)"
+  if [[ -n "$nvm_bin" && -d "$nvm_bin" ]]; then
+    case ":$PATH:" in
+      *":$nvm_bin:"*) ;;
+      *) PATH="$nvm_bin:$PATH" ;;
+    esac
+    export PATH
+
+    if command -v node >/dev/null 2>&1 && command -v npm >/dev/null 2>&1; then
+      return 0
+    fi
+  fi
+
+  local sentinel_start="__ADO_MCP_PATH_START__"
+  local sentinel_end="__ADO_MCP_PATH_END__"
+  local interactive_output=""
+  local interactive_path=""
+  local path_entry
+
+  interactive_output="$(ADO_MCP_INTERACTIVE_PATH_BOOTSTRAP=1 bash -ic "printf '%s%s%s' '$sentinel_start' \"\$PATH\" '$sentinel_end'" 2>/dev/null || true)"
+  if [[ "$interactive_output" != *"$sentinel_start"*"$sentinel_end"* ]]; then
+    return 0
+  fi
+
+  interactive_path="${interactive_output#*${sentinel_start}}"
+  interactive_path="${interactive_path%%${sentinel_end}*}"
+  if [[ -z "$interactive_path" ]]; then
+    return 0
+  fi
+
+  local old_ifs="$IFS"
+  IFS=':'
+  for path_entry in $interactive_path; do
+    [[ -z "$path_entry" ]] && continue
+    case ":$PATH:" in
+      *":$path_entry:"*) ;;
+      *) PATH="$path_entry:$PATH" ;;
+    esac
+  done
+  IFS="$old_ifs"
+  export PATH
+}
+
+restore_interactive_shell_path
+
 clients_csv="All"
 purge_global=0
 
@@ -95,6 +146,48 @@ console.log(`  Removed block from: ${path}`);
 NODE
 }
 
+remove_claude_user_mcp_server() {
+  local list_output line name output
+  local removed=0
+  local failed=0
+
+  if ! list_output="$(claude mcp list 2>&1)"; then
+    printf '%s\n' "$list_output" >&2
+    echo "  WARN: could not remove standalone Claude MCP server registrations." >&2
+    return 1
+  fi
+
+  while IFS= read -r line; do
+    [[ "$line" =~ \.ado-mcp[\\/](ado-mcp|ado-mcp-launcher)\.(sh|ps1) ]] || continue
+    name="${line%%:*}"
+    [[ -n "$name" ]] || continue
+
+    if output="$(claude mcp remove --scope user "$name" 2>&1)"; then
+      echo "  Removed standalone Claude MCP server: $name"
+      removed=1
+      continue
+    fi
+
+    if grep -Fq "No user-scoped MCP server found with name: $name" <<< "$output"; then
+      continue
+    fi
+
+    printf '%s\n' "$output" >&2
+    failed=1
+  done <<< "$list_output"
+
+  if (( failed != 0 )); then
+    echo "  WARN: could not remove standalone Claude MCP server registrations." >&2
+    return 1
+  fi
+
+  if (( removed != 0 )); then
+    echo "  Removed standalone Claude MCP server registrations."
+  else
+    echo "  Standalone Claude MCP servers not registered, skipping."
+  fi
+}
+
 vscode_user_dir() {
   case "$(uname -s)" in
     Darwin) printf '%s\n' "$HOME/Library/Application Support/Code/User" ;;
@@ -111,12 +204,7 @@ if [[ $configure_claude -eq 1 ]]; then
   echo "Removing Claude Code configuration..."
 
   if command -v claude >/dev/null 2>&1; then
-    if claude mcp list 2>/dev/null | grep -q "azure-devops"; then
-      claude mcp remove --scope user azure-devops
-      echo "  Removed MCP server: azure-devops"
-    else
-      echo "  MCP server not registered, skipping."
-    fi
+    remove_claude_user_mcp_server
 
     if claude plugin list 2>/dev/null | grep -Eq "azure-devops-agents-claude@azure-devops-agents"; then
       claude plugin uninstall azure-devops-agents-claude@azure-devops-agents
@@ -136,6 +224,41 @@ if [[ $configure_claude -eq 1 ]]; then
   fi
 
   remove_markdown_block "$user_home/.claude/CLAUDE.md" "azure-devops-agents"
+
+  # Remove the disabledMcpjsonServers entry added by the installer.
+  claude_settings="$user_home/.claude/settings.json"
+  if [[ -f "$claude_settings" ]]; then
+    if ! command -v node >/dev/null 2>&1; then
+      echo "  WARN: Node.js not found — cannot update $claude_settings. Remove disabledMcpjsonServers manually." >&2
+    else
+      node - "$claude_settings" <<'NODE'
+const fs = require("fs");
+const settingsPath = process.argv[2];
+let json = {};
+try {
+  const raw = fs.readFileSync(settingsPath, "utf8").trim();
+  if (raw) json = JSON.parse(raw);
+} catch (err) {
+  console.error(`  WARN: Could not parse ${settingsPath} — remove disabledMcpjsonServers manually. (${err.message})`);
+  process.exit(0);
+}
+if (!Array.isArray(json.disabledMcpjsonServers)) {
+  console.log(`  disabledMcpjsonServers not present, skipping: ${settingsPath}`);
+  process.exit(0);
+}
+const filtered = json.disabledMcpjsonServers.filter((s) => s !== "azure-devops");
+if (filtered.length === 0) {
+  delete json.disabledMcpjsonServers;
+} else {
+  json.disabledMcpjsonServers = filtered;
+}
+fs.writeFileSync(settingsPath, JSON.stringify(json, null, 2) + "\n", "utf8");
+console.log(`  Removed 'azure-devops' from disabledMcpjsonServers: ${settingsPath}`);
+NODE
+    fi
+  else
+    echo "  Claude settings.json not found, skipping."
+  fi
 fi
 
 # ── VS Code / Copilot ──────────────────────────────────────────────────────────

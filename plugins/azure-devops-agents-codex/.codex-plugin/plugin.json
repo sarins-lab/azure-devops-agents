@@ -1,7 +1,7 @@
 {
   "name": "azure-devops-agents-codex",
   "version": "1.0.0",
-  "description": "Codex planning adapter for Azure DevOps Epics, Features, User Stories, and ADRs.",
+  "description": "Codex planning adapter for RUP-style Azure DevOps stakeholder requests, requirements, UX artifacts, technical documentation, delivery slices, tasks, and ADRs.",
   "author": {
     "name": "Vivek Sarin",
     "url": "https://github.com/sarins-lab/azure-devops-agents"
@@ -18,8 +18,8 @@
   "skills": "./skills/",
   "interface": {
     "displayName": "Azure DevOps Planning for Codex",
-    "shortDescription": "Plan Azure DevOps work items from Codex.",
-    "longDescription": "Adds Codex guidance for planning Epics, Features, User Stories, acceptance criteria, estimates, and ADRs using the shared Azure DevOps planning workflows.",
+    "shortDescription": "Plan RUP artifacts into Azure DevOps from Codex.",
+    "longDescription": "Adds Codex guidance for planning stakeholder requests, functional requirements, non-functional requirements, UX artifacts, technical requirements, technical documentation, delivery slices, tasks, estimates, and ADRs using the shared RUP planning workflow.",
     "developerName": "Vivek Sarin",
     "category": "Productivity",
     "capabilities": [
@@ -28,9 +28,11 @@
     ],
     "websiteURL": "https://github.com/sarins-lab/azure-devops-agents",
     "defaultPrompt": [
-      "/plan-story add self-service password reset",
-      "/plan-feature add certificate rotation",
-      "/plan-epic modernize developer onboarding"
+      "/capture-request modernize developer onboarding",
+      "/define-requirements add certificate rotation",
+      "/design-ux add self-service password reset",
+      "/document-solution add certificate rotation",
+      "/plan-delivery add self-service password reset"
     ],
     "brandColor": "#2563EB"
   }

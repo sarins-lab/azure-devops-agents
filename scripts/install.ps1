@@ -7,6 +7,8 @@ param(
     [string]$Mode = "npx",
     [string]$Authentication = "azcli",
     [string[]]$Domains = @("core", "work", "work-items", "repositories", "wiki"),
+    [string]$Project = $env:ADO_MCP_PROJECT,
+    [string]$Team = $env:ADO_MCP_TEAM,
     [string]$DockerImage = "",
     [string]$AuthToken = "",
     [switch]$Force
@@ -20,6 +22,14 @@ $installArgs = @{
     Mode           = $Mode
     Authentication = $Authentication
     Domains        = $Domains
+}
+
+if (-not [string]::IsNullOrWhiteSpace($Project)) {
+    $installArgs.Project = $Project
+}
+
+if (-not [string]::IsNullOrWhiteSpace($Team)) {
+    $installArgs.Team = $Team
 }
 
 if (-not [string]::IsNullOrWhiteSpace($DockerImage)) {

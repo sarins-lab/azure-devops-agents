@@ -1,53 +1,74 @@
-# Azure DevOps - Sprint Planning (azure-devops-agents)
+# Azure DevOps RUP Planning - Codex Adapter
 
 The `azure-devops` MCP server is configured at user level via `~/.codex/config.toml`.
-Place `.ado-mcp.json` in any repo root to specify `project` and `team`; the launcher injects them automatically.
+The installer stores a default `project` and optional `team` in `~/.ado-mcp/config.json`. Place `.ado-mcp.json` in any repo root to override `project` and `team`; the launcher injects the resolved values automatically.
 
-## Work Item Hierarchy
+## Canonical Model
 
-Epic -> Feature -> User Story -> Task
+Use RUP-style SDLC concepts:
 
-All items must be created with parent links. Never leave a work item parentless.
+- Stakeholder Request
+- Functional Requirement
+- Non-Functional Requirement
+- UX Artifact
+- Technical Requirement
+- Architecture
+- Technical Documentation
+- Delivery Slice
+- Task
+
+Azure DevOps process terms are persistence targets only. Do not plan in User Story, Product Backlog Item, CMMI Requirement, or Issue language unless you are describing the final process mapping.
 
 ## Routing
 
-Run the planning workflow automatically when planning intent is detected. Do not wait for an explicit command.
+Run the planning workflow automatically when planning intent is detected, even when the user does not mention Azure DevOps, RUP, or a route name. Trigger phrases include "I want to", "we need to", "we should", "let's", "setup", "build", "design", "create", "define", "implement", "secure", "expose", "integrate", "document", "diagram", "estimate", and "break down".
 
-Also recognize slash-style text commands typed by the user:
-- `/plan-story <description> [under feature <id>]`
-- `/plan-feature <id or description>`
-- `/plan-epic <id or description>`
+Example: "I want to setup a highly secure home lab exposed through Cloudflare Tunnel" maps to `/capture-request` and starts with the Stakeholder Analyst phase.
 
-Codex does not load Claude command files. Treat these slash-style inputs as routing instructions and execute the workflow directly; do not say the command is unavailable.
+Recognize these preferred routes:
 
-Trigger phrases: "we need to", "we should", "let's", "I want to", "plan", "design", "build", "create", "define", "implement".
+- `/capture-request <description>`
+- `/define-requirements <request or parent-id>`
+- `/design-ux <requirements or parent-id>`
+- `/plan-requirement <description> [under <parent-id>]`
+- `/document-solution <requirements or architecture>`
+- `/plan-delivery <requirement or parent-id>`
+- `/plan-task <delivery-slice or parent-id>`
 
-Do not trigger for lookup-only queries such as "what's in sprint 3?" or "show me story #42".
+Do not trigger for lookup-only queries such as "what is in sprint 3?" or "show work item 42".
 
-Detect level from context: Epic for broad initiatives, Feature for specific capabilities, Story for single behavior. Ask if ambiguous.
+## Role Workflow
 
-## Canonical Workflows
+1. Stakeholder Analyst: capture request, business outcome, scope boundaries, stakeholders, affected users, and success measures. Pause for confirmation.
+2. Requirements Analyst: derive functional and non-functional requirements with testable acceptance criteria and explicit out-of-scope boundaries. Pause for confirmation.
+3. UX Designer: derive user journeys, screen flows, Figma-ready screen specifications, accessibility notes, and UX acceptance criteria for user-facing requirements. Pause for confirmation.
+4. Solution Architect: define cohesive architecture views, boundaries, runtime flows, deployment, data, security, operations, technical requirements, ADR candidates, and risks. Pause for confirmation.
+5. Technical Writer: produce traceable technical documentation and Azure DevOps wiki-safe Mermaid diagrams from the confirmed architecture package. Pause for confirmation.
+6. Delivery Planner: derive delivery slices, estimate, order by dependency/value, query iterations/capacity, and recommend sprint placement. Pause before creating anything.
+7. Implementation Lead: create task breakdown only when requested or required by the workflow.
 
-For plan-story, follow the workflow in `shared/workflows/plan-story.md`.
-For plan-feature, follow the workflow in `shared/workflows/plan-feature.md`.
-For plan-epic, follow the workflow in `shared/workflows/plan-epic.md`.
+## Development Readiness Gate
 
-If the shared files are not available in the current context, use the embedded rules below.
+Before starting implementation, repository edits, deployment, or configuration work, verify that the request is traceable to an existing approved Azure DevOps work item or a confirmed RUP planning artifact. If the user asks for work that is not already represented in Azure DevOps, trigger the SDLC workflow first by capturing it as a new Stakeholder Request or Change Request.
 
-## plan-story Workflow
+Only start development after Stakeholder Analyst, Requirements Analyst, UX Designer when applicable, Solution Architect, Technical Writer, Delivery Planner, and needed Implementation Lead phases are confirmed. UX must be completed for user-facing work or explicitly marked not applicable for non-UI work.
 
-1. Load context. If the prompt contains `under feature <id>`, call `mcp_ado_wit_get_work_item` for that Feature. If no Feature ID is specified, ask for it before creating anything.
-2. BA phase. Draft one story in `As a [persona] I want [goal] so that [value]` format with 2-4 Given/When/Then acceptance criteria and an explicit out-of-scope boundary. Pause for confirmation.
-3. SA phase. Add one implementation note covering what changes, which service owns it, how it integrates, and the key technical decision. Pause for confirmation.
-4. PM phase. Estimate Fibonacci story points, recommend a sprint using `mcp_ado_work_list_team_iterations` and `mcp_ado_work_get_team_capacity`, and flag if the story should be split. Pause before creating anything.
-5. Create only after confirmation. Call `mcp_ado_wit_add_child_work_items` with `parentId`, `project`, `workItemType: "User Story"`, and `items` containing exactly `title`, `description`, `format: "Markdown"`, and `iterationPath`.
-6. Then call `mcp_ado_wit_update_work_item` for the created story ID with Acceptance Criteria and Story Points updates.
-7. Read back with `mcp_ado_wit_get_work_item`. If the parent link is missing, call `mcp_ado_wit_work_items_link`.
+## Architecture And Diagrams
 
-## Tooling Rules
+Architecture must be a cohesive system model, not a list of tools. The Solution Architect must define context, component, runtime, deployment, security/trust, data/integration, operations, decisions, tradeoffs, and open questions. Every technology choice must be confirmed or marked as an ADR candidate.
 
-Use the official create-then-update pattern. `mcp_ado_wit_add_child_work_items` only creates title, description, area path, iteration path, and parent link. Add Acceptance Criteria, Story Points, Tags, and other fields with `mcp_ado_wit_update_work_item`.
+Technical Writer output must not introduce new architecture decisions. Mermaid diagrams for Azure DevOps wiki must use `::: mermaid` blocks, `graph TD;` or `graph LR;` for flowcharts, simple node IDs, quoted ASCII labels, no HTML, no Markdown in labels, no angle-bracket placeholders, no raw Unicode symbols, and no GitHub-style Mermaid code fences.
 
-Read prior ADRs with `mcp_ado_wiki_list_wikis`, `mcp_ado_wiki_list_pages`, `mcp_ado_wiki_get_page`, and `mcp_ado_wiki_get_page_content`.
+## Azure DevOps Persistence
 
-Verify every created item with `mcp_ado_wit_get_work_item`. Fix missing links with `mcp_ado_wit_work_items_link`.
+Before creating or updating work items:
+
+1. Call `mcp_ado_wit_list_backlogs` with `project` and `team`.
+2. Identify default work item types for epic, feature, requirement-level, and task categories.
+3. Call `mcp_ado_wit_get_work_item_type` for target types.
+4. Select fields from metadata only: estimate, acceptance criteria, requirement classification, tags, iteration path.
+5. Create parent-before-child with `mcp_ado_wit_add_child_work_items`.
+6. Enrich fields afterward with `mcp_ado_wit_update_work_item`.
+7. Verify with `mcp_ado_wit_get_work_item`; repair missing links with `mcp_ado_wit_work_items_link`.
+
+If the process is CMMI, Functional Requirements usually map to `Requirement` with `Requirement Type=Functional` when the field exists. Scrum and Agile map the same RUP artifact to their own requirement-level backlog item. The metadata response is authoritative.

@@ -1,29 +1,90 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-json_value() {
+restore_interactive_shell_path() {
+  if command -v node >/dev/null 2>&1 && \
+     { command -v mcp-server-azuredevops >/dev/null 2>&1 || command -v npx >/dev/null 2>&1; }; then
+    return 0
+  fi
+
+  local nvm_bin=""
+  nvm_bin="$(printf '%s\n' "$HOME"/.nvm/versions/node/*/bin 2>/dev/null | sort -V | tail -n 1 || true)"
+  if [[ -n "$nvm_bin" && -d "$nvm_bin" ]]; then
+    case ":$PATH:" in
+      *":$nvm_bin:"*) ;;
+      *) PATH="$nvm_bin:$PATH" ;;
+    esac
+    export PATH
+
+    if command -v node >/dev/null 2>&1 && \
+       { command -v mcp-server-azuredevops >/dev/null 2>&1 || command -v npx >/dev/null 2>&1; }; then
+      return 0
+    fi
+  fi
+
+  local sentinel_start="__ADO_MCP_PATH_START__"
+  local sentinel_end="__ADO_MCP_PATH_END__"
+  local interactive_output=""
+  local interactive_path=""
+  local path_entry
+
+  interactive_output="$(ADO_MCP_INTERACTIVE_PATH_BOOTSTRAP=1 bash -ic "printf '%s%s%s' '$sentinel_start' \"\$PATH\" '$sentinel_end'" 2>/dev/null || true)"
+  if [[ "$interactive_output" != *"$sentinel_start"*"$sentinel_end"* ]]; then
+    return 0
+  fi
+
+  interactive_path="${interactive_output#*${sentinel_start}}"
+  interactive_path="${interactive_path%%${sentinel_end}*}"
+  if [[ -z "$interactive_path" ]]; then
+    return 0
+  fi
+
+  local old_ifs="$IFS"
+  IFS=':'
+  for path_entry in $interactive_path; do
+    [[ -z "$path_entry" ]] && continue
+    case ":$PATH:" in
+      *":$path_entry:"*) ;;
+      *) PATH="$path_entry:$PATH" ;;
+    esac
+  done
+  IFS="$old_ifs"
+  export PATH
+}
+
+restore_interactive_shell_path
+
+load_config() {
   local file="$1"
-  local key="$2"
-  node -e '
+  local prefix="$2"
+
+  [[ -n "$file" && -f "$file" ]] || return 0
+
+  eval "$(node - <<'NODE' "$file" "$prefix"
 const fs = require("fs");
-const file = process.argv[1];
-const key = process.argv[2];
-if (!fs.existsSync(file)) process.exit(0);
+const [file, prefix] = process.argv.slice(2);
 const raw = fs.readFileSync(file, "utf8").trim();
 if (!raw) process.exit(0);
+
 const data = JSON.parse(raw);
-const value = data[key];
-if (value === undefined || value === null || value === "") process.exit(0);
-if (Array.isArray(value)) {
-  for (const item of value) {
-    if (item !== undefined && item !== null && String(item).trim() !== "") {
-      console.log(String(item));
-    }
-  }
-} else {
-  console.log(String(value));
-}
-' "$file" "$key"
+const shellQuote = (value) => `'${String(value).replace(/'/g, `'\\''`)}'`;
+const emitString = (name, value) => {
+  if (typeof value !== "string" || value.trim() === "") return;
+  console.log(`${prefix}${name}=${shellQuote(value.trim())}`);
+};
+
+emitString("organization", data.organization);
+emitString("authentication", data.authentication);
+emitString("docker_image", data.dockerImage);
+emitString("project", data.project);
+emitString("team", data.team);
+
+const domains = Array.isArray(data.domains)
+  ? data.domains.filter((item) => item !== undefined && item !== null && String(item).trim() !== "")
+  : [];
+console.log(`${prefix}domains=(${domains.map((item) => shellQuote(String(item).trim())).join(" ")})`);
+NODE
+)"
 }
 
 find_repo_config() {
@@ -63,23 +124,32 @@ fi
 
 repo_config_path="$(find_repo_config || true)"
 
-organization="$(json_value "$user_config_path" "organization" | head -n 1 || true)"
-organization="${organization:-${ADO_MCP_ORG:-}}"
+user_config_organization=""
+user_config_authentication=""
+user_config_docker_image=""
+user_config_project=""
+user_config_team=""
+user_config_domains=()
+repo_config_project=""
+repo_config_team=""
+repo_config_domains=()
+
+load_config "$user_config_path" "user_config_"
+load_config "$repo_config_path" "repo_config_"
+
+organization="${user_config_organization:-${ADO_MCP_ORG:-}}"
 if [[ -z "$organization" ]]; then
   echo "Azure DevOps organization is not configured. Set ADO_MCP_ORG or create $user_config_path." >&2
   exit 1
 fi
 
-authentication="$(json_value "$user_config_path" "authentication" | head -n 1 || true)"
-authentication="${authentication:-azcli}"
-docker_image="$(json_value "$user_config_path" "dockerImage" | head -n 1 || true)"
+authentication="${user_config_authentication:-azcli}"
+docker_image="${user_config_docker_image:-}"
 
-project=""
-team=""
-if [[ -n "$repo_config_path" ]]; then
-  project="$(json_value "$repo_config_path" "project" | head -n 1 || true)"
-  team="$(json_value "$repo_config_path" "team" | head -n 1 || true)"
-fi
+project="${user_config_project:-${ADO_MCP_PROJECT:-}}"
+team="${user_config_team:-${ADO_MCP_TEAM:-}}"
+[[ -n "$repo_config_project" ]] && project="$repo_config_project"
+[[ -n "$repo_config_team" ]] && team="$repo_config_team"
 
 if [[ -n "$project" ]]; then
   export ado_mcp_project="$project"
@@ -88,19 +158,9 @@ if [[ -n "$team" ]]; then
   export ado_mcp_team="$team"
 fi
 
-domains=()
-while IFS= read -r domain; do
-  [[ -n "$domain" ]] && domains+=("$domain")
-done < <(json_value "$user_config_path" "domains" || true)
-
-if [[ -n "$repo_config_path" ]]; then
-  repo_domains=()
-  while IFS= read -r domain; do
-    [[ -n "$domain" ]] && repo_domains+=("$domain")
-  done < <(json_value "$repo_config_path" "domains" || true)
-  if (( ${#repo_domains[@]} > 0 )); then
-    domains=("${repo_domains[@]}")
-  fi
+domains=("${user_config_domains[@]}")
+if (( ${#repo_config_domains[@]} > 0 )); then
+  domains=("${repo_config_domains[@]}")
 fi
 
 if [[ -n "$docker_image" ]]; then

@@ -88,12 +88,26 @@ if ([string]::IsNullOrWhiteSpace($authentication)) {
 
 $dockerImage = Get-StringValue -Object $userConfig -Name "dockerImage"
 
-$project = Get-StringValue -Object $repoConfig -Name "project"
+$project = Get-StringValue -Object $userConfig -Name "project"
+if ([string]::IsNullOrWhiteSpace($project)) {
+    $project = $env:ADO_MCP_PROJECT
+}
+$repoProject = Get-StringValue -Object $repoConfig -Name "project"
+if (-not [string]::IsNullOrWhiteSpace($repoProject)) {
+    $project = $repoProject
+}
 if (-not [string]::IsNullOrWhiteSpace($project)) {
     $env:ado_mcp_project = $project
 }
 
-$team = Get-StringValue -Object $repoConfig -Name "team"
+$team = Get-StringValue -Object $userConfig -Name "team"
+if ([string]::IsNullOrWhiteSpace($team)) {
+    $team = $env:ADO_MCP_TEAM
+}
+$repoTeam = Get-StringValue -Object $repoConfig -Name "team"
+if (-not [string]::IsNullOrWhiteSpace($repoTeam)) {
+    $team = $repoTeam
+}
 if (-not [string]::IsNullOrWhiteSpace($team)) {
     $env:ado_mcp_team = $team
 }

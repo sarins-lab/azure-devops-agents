@@ -62,6 +62,82 @@ function ConvertFrom-JsonOrJsonC {
     }
 }
 
+function Remove-ClaudeUserMcpServer {
+    param(
+        [string]$SuccessMessage,
+        [string]$NotFoundMessage,
+        [string]$FailureMessage
+    )
+
+    $listOutput = (& claude mcp list 2>&1) -join "`n"
+    if ($LASTEXITCODE -ne 0) {
+        if (-not [string]::IsNullOrWhiteSpace($listOutput)) {
+            Write-Warning $listOutput
+        }
+        Write-Warning $FailureMessage
+        return
+    }
+
+    $removed = $false
+    $failed = $false
+    foreach ($line in ($listOutput -split "`r?`n")) {
+        if ($line -notmatch '\.ado-mcp[\\/](ado-mcp|ado-mcp-launcher)\.(sh|ps1)') {
+            continue
+        }
+
+        $colonIndex = $line.IndexOf(':')
+        if ($colonIndex -lt 0) {
+            continue
+        }
+
+        $name = $line.Substring(0, $colonIndex).Trim()
+        if ([string]::IsNullOrWhiteSpace($name)) {
+            continue
+        }
+
+        $output = (& claude mcp remove --scope user $name 2>&1) -join "`n"
+        if ($LASTEXITCODE -eq 0) {
+            Write-Host "  Removed standalone Claude MCP server: $name"
+            $removed = $true
+            continue
+        }
+
+        if ($output -match [regex]::Escape("No user-scoped MCP server found with name: $name")) {
+            continue
+        }
+
+        if (-not [string]::IsNullOrWhiteSpace($output)) {
+            Write-Warning $output
+        }
+        $failed = $true
+    }
+
+    if ($failed) {
+        Write-Warning $FailureMessage
+        return
+    }
+
+    if ($removed) {
+        Write-Host $SuccessMessage
+    } else {
+        Write-Host $NotFoundMessage
+    }
+}
+
+function Get-NpmCommandPath {
+    $npmCmd = Get-Command npm.cmd -ErrorAction SilentlyContinue
+    if ($npmCmd) {
+        return $npmCmd.Source
+    }
+
+    $npmCmd = Get-Command npm -ErrorAction SilentlyContinue
+    if ($npmCmd) {
+        return $npmCmd.Source
+    }
+
+    return $null
+}
+
 function Remove-MarkdownBlock {
     param([string]$Path, [string]$Marker)
     if (-not (Test-Path -LiteralPath $Path)) { return }
@@ -99,13 +175,10 @@ if ($configureClaude) {
 
     $claudeCmd = Get-Command claude -ErrorAction SilentlyContinue
     if ($claudeCmd) {
-        $mcpList = & claude mcp list 2>$null
-        if ($mcpList -match "azure-devops") {
-            & claude mcp remove --scope user azure-devops
-            Write-Host "  Removed MCP server: azure-devops"
-        } else {
-            Write-Host "  MCP server not registered, skipping."
-        }
+        Remove-ClaudeUserMcpServer `
+            -SuccessMessage "  Removed standalone Claude MCP server registrations." `
+            -NotFoundMessage "  Standalone Claude MCP servers not registered, skipping." `
+            -FailureMessage "Could not remove standalone Claude MCP server registrations."
 
         $pluginList = & claude plugin list 2>$null
         if ($pluginList -match "azure-devops-agents-claude@azure-devops-agents") {
@@ -127,6 +200,34 @@ if ($configureClaude) {
     }
 
     Remove-MarkdownBlock -Path (Join-Path $userHome ".claude\CLAUDE.md") -Marker "azure-devops-agents"
+
+    # Remove the disabledMcpjsonServers entry added by the installer.
+    $claudeSettingsPath = Join-Path $userHome ".claude\settings.json"
+    if (Test-Path -LiteralPath $claudeSettingsPath) {
+        try {
+            $raw  = Get-Content -LiteralPath $claudeSettingsPath -Raw
+            $json = if ([string]::IsNullOrWhiteSpace($raw)) { $null } else { $raw | ConvertFrom-Json }
+            if ($null -ne $json) {
+                $prop = $json.PSObject.Properties["disabledMcpjsonServers"]
+                if ($null -ne $prop) {
+                    $filtered = @($prop.Value | Where-Object { $_ -ne "azure-devops" })
+                    if ($filtered.Count -eq 0) {
+                        $json.PSObject.Properties.Remove("disabledMcpjsonServers")
+                    } else {
+                        $prop.Value = $filtered
+                    }
+                    $json | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $claudeSettingsPath -Encoding utf8
+                    Write-Host "  Removed 'azure-devops' from disabledMcpjsonServers: $claudeSettingsPath"
+                } else {
+                    Write-Host "  disabledMcpjsonServers not present, skipping: $claudeSettingsPath"
+                }
+            }
+        } catch {
+            Write-Warning "Could not update $claudeSettingsPath - remove disabledMcpjsonServers manually. $($_.Exception.Message)"
+        }
+    } else {
+        Write-Host "  Claude settings.json not found, skipping."
+    }
 }
 
 # ── VS Code / Copilot ──────────────────────────────────────────────────────────
@@ -220,10 +321,11 @@ if ($configureClaude -and $configureVSCode -and $configureCodex) {
 
 # ── Optional: global npm package ──────────────────────────────────────────────
 if ($PurgeGlobal) {
-    if (-not (Get-Command npm -ErrorAction SilentlyContinue)) {
+    $npmCommandPath = Get-NpmCommandPath
+    if (-not $npmCommandPath) {
         Write-Warning "npm not found — cannot uninstall global package."
     } else {
-        & npm uninstall -g "@azure-devops/mcp"
+        & $npmCommandPath uninstall -g "@azure-devops/mcp"
         if ($LASTEXITCODE -eq 0) {
             Write-Host "Removed global package if present: @azure-devops/mcp"
         } else {

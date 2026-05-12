@@ -10,12 +10,12 @@ The installing user needs access to the target Azure DevOps organization and eno
 
 - Read projects, teams, iterations, and team capacity
 - Read and create work items
-- Update work item fields such as Acceptance Criteria, Story Points, Tags, and Iteration Path
+- Update work item fields discovered from the active process, such as acceptance criteria, estimate, classification, tags, and iteration path
 - Create parent-child work item links
 - Read repositories for technical discovery
-- Read and update wiki pages for ADRs
+- Read and update wiki pages for technical documentation, diagrams, runbooks, and ADRs
 
-The repo using this plugin must contain `.ado-mcp.json`:
+The installer stores a default Azure DevOps project and optional team in `~/.ado-mcp/config.json`. A repo only needs `.ado-mcp.json` when it should override that default:
 
 ```json
 {
@@ -24,14 +24,21 @@ The repo using this plugin must contain `.ado-mcp.json`:
 }
 ```
 
-The launcher reads this file at runtime and injects the Azure DevOps project and team for the MCP server.
+The launcher resolves project and team as: repo `.ado-mcp.json` first, then user-level `~/.ado-mcp/config.json`, then environment variables.
+
+For noninteractive installs, pass these values explicitly:
+
+- Repo-local scripts: `-Organization` or `--organization`, plus `-Project` or `--project` and optionally `-Team` or `--team`
+- Online installers: `ADO_MCP_ORG`, plus `ADO_MCP_PROJECT` and optionally `ADO_MCP_TEAM`
+- Optional install scope: `-Clients` or `--clients`, or `ADO_MCP_CLIENTS` for online install
+- Optional replace-in-place behavior: `-Force` or `--force`, or `ADO_MCP_FORCE` for online install
 
 ## Supported Clients
 
 | Client          | Required for install                                             | What gets configured                                                      |
 | --------------- | ---------------------------------------------------------------- | ------------------------------------------------------------------------- |
 | Claude Code     | `claude` CLI on `PATH`                                           | MCP server, plugin marketplace, native plugin, global `CLAUDE.md` context |
-| VS Code Copilot | VS Code user settings directory and Copilot Chat                 | MCP server, Copilot instructions, prompt files                            |
+| VS Code Copilot | VS Code user settings directory and Copilot Chat                 | MCP server and Copilot instructions                                       |
 | Codex           | Codex config directory; `codex` CLI recommended for verification | MCP server in `~/.codex/config.toml`, global `AGENTS.md` context          |
 
 If the Claude CLI is missing, the installer still writes Claude context, but MCP registration and plugin install must be completed manually after Claude Code is installed.
@@ -64,12 +71,12 @@ This is the default mode.
 
 ```powershell
 az login
-.\scripts\install.ps1 -Organization <your-org>
+.\scripts\install.ps1 -Organization <your-org> -Project <your-project> -Team "<your-team>"
 ```
 
 ```bash
 az login
-bash ./scripts/install.sh --organization <your-org>
+bash ./scripts/install.sh --organization <your-org> --project <your-project> --team "<your-team>"
 ```
 
 The launcher starts `@azure-devops/mcp` through `npx` and uses the active Azure CLI session.
@@ -83,6 +90,8 @@ docker build -t ghcr.io/sarins-lab/azure-devops-agents:latest .\docker
 
 .\scripts\install.ps1 `
   -Organization <your-org> `
+  -Project <your-project> `
+  -Team "<your-team>" `
   -DockerImage ghcr.io/sarins-lab/azure-devops-agents:latest `
   -AuthToken <your-azure-devops-pat>
 ```
@@ -92,6 +101,8 @@ docker build -t ghcr.io/sarins-lab/azure-devops-agents:latest ./docker
 
 bash ./scripts/install.sh \
   --organization <your-org> \
+  --project <your-project> \
+  --team "<your-team>" \
   --docker-image ghcr.io/sarins-lab/azure-devops-agents:latest \
   --auth-token <your-azure-devops-pat>
 ```
@@ -123,10 +134,14 @@ Use the online installer when users should not clone or download this repository
 The script runs from GitHub, writes user-level launcher/config/context files, and
 does not download the repository archive.
 
+For a noninteractive online install, set `ADO_MCP_ORG` and `ADO_MCP_PROJECT` first. Set `ADO_MCP_TEAM`, `ADO_MCP_CLIENTS`, and `ADO_MCP_FORCE` when needed.
+
 Windows PowerShell:
 
 ```powershell
 $env:ADO_MCP_ORG = "<your-org>"
+$env:ADO_MCP_PROJECT = "<your-project>"
+$env:ADO_MCP_TEAM = "<your-team>"   # optional
 irm https://raw.githubusercontent.com/sarins-lab/azure-devops-agents/main/scripts/install-online.ps1 | iex
 ```
 
@@ -134,7 +149,9 @@ Codex only on Windows:
 
 ```powershell
 $env:ADO_MCP_ORG = "<your-org>"
+$env:ADO_MCP_PROJECT = "<your-project>"
 $env:ADO_MCP_CLIENTS = "Codex"
+$env:ADO_MCP_FORCE = "1"   # optional
 irm https://raw.githubusercontent.com/sarins-lab/azure-devops-agents/main/scripts/install-online.ps1 | iex
 ```
 
@@ -148,6 +165,8 @@ Users can run:
 
 ```powershell
 $env:ADO_MCP_ORG = "<your-org>"
+$env:ADO_MCP_PROJECT = "<your-project>"
+$env:ADO_MCP_TEAM = "<your-team>"   # optional
 irm https://tinyurl.com/yc3wvu6u | iex
 ```
 
@@ -155,6 +174,8 @@ Linux/macOS:
 
 ```bash
 export ADO_MCP_ORG="<your-org>"
+export ADO_MCP_PROJECT="<your-project>"
+export ADO_MCP_TEAM="<your-team>"   # optional
 curl -fsSL https://raw.githubusercontent.com/sarins-lab/azure-devops-agents/main/scripts/install-online.sh | bash
 ```
 
@@ -162,7 +183,9 @@ Codex only:
 
 ```bash
 export ADO_MCP_ORG="<your-org>"
+export ADO_MCP_PROJECT="<your-project>"
 export ADO_MCP_CLIENTS="Codex"
+export ADO_MCP_FORCE="1"   # optional
 curl -fsSL https://raw.githubusercontent.com/sarins-lab/azure-devops-agents/main/scripts/install-online.sh | bash
 ```
 
@@ -176,6 +199,8 @@ Users can run:
 
 ```bash
 export ADO_MCP_ORG="<your-org>"
+export ADO_MCP_PROJECT="<your-project>"
+export ADO_MCP_TEAM="<your-team>"   # optional
 curl -fsSL https://tinyurl.com/bdfuef4w | bash
 ```
 
@@ -185,28 +210,28 @@ Install for all supported clients:
 
 ```powershell
 $install = Invoke-RestMethod https://raw.githubusercontent.com/sarins-lab/azure-devops-agents/main/scripts/install-online.ps1
-& ([scriptblock]::Create($install)) -Organization <your-org>
+& ([scriptblock]::Create($install)) -Organization <your-org> -Project <your-project> -Team "<your-team>"
 ```
 
 Install for one client:
 
 ```powershell
 $install = Invoke-RestMethod https://raw.githubusercontent.com/sarins-lab/azure-devops-agents/main/scripts/install-online.ps1
-& ([scriptblock]::Create($install)) -Organization <your-org> -Clients Codex
-& ([scriptblock]::Create($install)) -Organization <your-org> -Clients VSCode
-& ([scriptblock]::Create($install)) -Organization <your-org> -Clients Claude
+& ([scriptblock]::Create($install)) -Organization <your-org> -Project <your-project> -Clients Codex
+& ([scriptblock]::Create($install)) -Organization <your-org> -Project <your-project> -Clients VSCode
+& ([scriptblock]::Create($install)) -Organization <your-org> -Project <your-project> -Clients Claude
 ```
 
 One-line form:
 
 ```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -Command '$install = Invoke-RestMethod "https://raw.githubusercontent.com/sarins-lab/azure-devops-agents/main/scripts/install-online.ps1"; & ([scriptblock]::Create($install)) -Organization "<your-org>"'
+powershell.exe -NoProfile -ExecutionPolicy Bypass -Command '$install = Invoke-RestMethod "https://raw.githubusercontent.com/sarins-lab/azure-devops-agents/main/scripts/install-online.ps1"; & ([scriptblock]::Create($install)) -Organization "<your-org>" -Project "<your-project>" -Team "<your-team>"'
 ```
 
-The online installer embeds the launcher, Codex context, VS Code context/prompts,
-and Claude context. It registers Claude MCP when the Claude CLI is available, but
-it does not install the native Claude plugin package because that package
-requires a local marketplace directory.
+The online installer embeds the launcher, Codex context, VS Code context,
+and Claude context. It does not install the native Claude plugin package or
+register Claude MCP, because the plugin-owned Claude MCP path requires a local
+marketplace directory.
 
 ## Repo-Local Install Commands
 
@@ -217,37 +242,37 @@ Install for all supported clients:
 Windows:
 
 ```powershell
-.\scripts\install.ps1 -Organization <your-org>
+.\scripts\install.ps1 -Organization <your-org> -Project <your-project> -Team "<your-team>"
 ```
 
 macOS/Linux:
 
 ```bash
-bash ./scripts/install.sh --organization <your-org>
+bash ./scripts/install.sh --organization <your-org> --project <your-project> --team "<your-team>"
 ```
 
 Install for one client:
 
 ```powershell
-.\scripts\install.ps1 -Organization <your-org> -Clients Claude
-.\scripts\install.ps1 -Organization <your-org> -Clients VSCode
-.\scripts\install.ps1 -Organization <your-org> -Clients Codex
+.\scripts\install.ps1 -Organization <your-org> -Project <your-project> -Clients Claude
+.\scripts\install.ps1 -Organization <your-org> -Project <your-project> -Clients VSCode
+.\scripts\install.ps1 -Organization <your-org> -Project <your-project> -Clients Codex
 ```
 
 ```bash
-bash ./scripts/install.sh --organization <your-org> --clients Claude
-bash ./scripts/install.sh --organization <your-org> --clients VSCode
-bash ./scripts/install.sh --organization <your-org> --clients Codex
+bash ./scripts/install.sh --organization <your-org> --project <your-project> --clients Claude
+bash ./scripts/install.sh --organization <your-org> --project <your-project> --clients VSCode
+bash ./scripts/install.sh --organization <your-org> --project <your-project> --clients Codex
 ```
 
 Force an update when the existing config was created with different organization or Docker settings:
 
 ```powershell
-.\scripts\install.ps1 -Organization <your-org> -Force
+.\scripts\install.ps1 -Organization <your-org> -Project <your-project> -Force
 ```
 
 ```bash
-bash ./scripts/install.sh --organization <your-org> --force
+bash ./scripts/install.sh --organization <your-org> --project <your-project> --force
 ```
 
 ## Files Written By The Installer
@@ -280,19 +305,17 @@ VS Code Copilot:
 - Linux: `${XDG_CONFIG_HOME:-~/.config}/Code/User/mcp.json`
 - Linux: `${XDG_CONFIG_HOME:-~/.config}/Code/User/settings.json`
 - `~/.ado-mcp/copilot-context.md`
-- `~/.ado-mcp/prompts/*.prompt.md`
 
-Claude plugin MCP entrypoint:
+Claude plugin install behavior:
 
-- `.claude-plugin/plugin.json` points to root `.mcp.json`.
-- `.mcp.json` runs `node scripts/ado-mcp-launcher.mjs`.
-- `ado-mcp-launcher.mjs` dispatches to PowerShell on Windows and Bash on macOS/Linux.
+- The Claude plugin owns the MCP declaration through root `.mcp.json` and `.claude-plugin/plugin.json`.
+- The repo-local installer registers the root marketplace, installs `azure-devops-agents-claude`, removes any legacy standalone user-scoped Claude MCP server named `azure-devops`, and then merges the global planning context into `~/.claude/CLAUDE.md`.
+- `scripts/ado-mcp-launcher.mjs` dispatches to `scripts/ado-mcp-launcher.sh` on macOS/Linux and `scripts/ado-mcp-launcher.ps1` on Windows.
 - `skills/azure-devops-planning/SKILL.md` carries the Claude plugin planning context.
-- The plugin can start the MCP server when Claude loads the plugin. The organization/auth configuration still comes from the installer or environment variables.
 
 ## Tooling Contract
 
-The planning prompts and commands must use official Microsoft MCP tool names with the `mcp_ado_*` pattern.
+The planning instructions must use official Microsoft MCP tool names with the `mcp_ado_*` pattern.
 
 Examples:
 
@@ -304,7 +327,7 @@ Examples:
 Work item creation uses a create-then-update pattern:
 
 1. Create child items with `mcp_ado_wit_add_child_work_items`.
-2. Add fields such as Acceptance Criteria and Story Points with `mcp_ado_wit_update_work_item`.
+2. Add only discovered fields, such as acceptance criteria, estimate, classification, and tags, with `mcp_ado_wit_update_work_item`.
 3. Verify parent links with `mcp_ado_wit_get_work_item`.
 4. Repair links with `mcp_ado_wit_work_items_link` if needed.
 
@@ -342,25 +365,13 @@ Check Codex MCP registration:
 codex mcp get azure-devops
 ```
 
-Check VS Code prompt files:
-
-```powershell
-Get-ChildItem ~/.ado-mcp/prompts
-```
-
-Expected prompt files:
-
-- `plan-epic.prompt.md`
-- `plan-feature.prompt.md`
-- `plan-story.prompt.md`
-
 ## Troubleshooting
 
 | Symptom                                         | Likely cause                                          | Fix                                                                                |
 | ----------------------------------------------- | ----------------------------------------------------- | ---------------------------------------------------------------------------------- |
 | Claude context exists but slash commands do not | Claude CLI was not available during install           | Install Claude Code, then rerun installer or run the manual Claude plugin commands |
 | Codex does not see the MCP server               | Client was already running or config was not reloaded | Restart Codex and verify `codex mcp get azure-devops`                              |
-| VS Code does not show prompt files              | Prompt directory not loaded yet                       | Restart VS Code and check `chat.promptFilesLocations` in user settings             |
+| VS Code does not use the planning context       | Copilot instructions were not reloaded                | Restart VS Code and confirm the context file is referenced in user settings        |
 | Docker mode starts but cannot authenticate      | `ADO_MCP_AUTH_TOKEN` missing or invalid               | Set a valid PAT and restart the client                                             |
 | Work item creation works but fields are missing | Fields were attempted during create instead of update | Use `mcp_ado_wit_update_work_item` after creation                                  |
 | Wiki ADR reading returns metadata only          | Used `mcp_ado_wiki_get_page` alone                    | Call `mcp_ado_wiki_get_page_content` after `mcp_ado_wiki_get_page`                 |
@@ -380,9 +391,9 @@ Before publishing a release:
    ```
 
 2. Install into an isolated test home using `ADO_MCP_HOME`.
-3. Verify the three VS Code prompt files are copied.
-4. Verify Codex global `AGENTS.md` contains `plan-epic`, `plan-feature`, and `plan-story`.
-5. Run a real `/plan-story` against a test Azure DevOps project.
+3. Verify VS Code user settings reference `~/.ado-mcp/copilot-context.md`.
+4. Verify Codex global `AGENTS.md` contains the RUP planning context.
+5. Run a real `/capture-request`, `/design-ux`, or `/plan-delivery` against a test Azure DevOps project.
 6. Publish only after validation passes:
 
    ```powershell
