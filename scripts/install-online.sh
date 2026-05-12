@@ -121,6 +121,13 @@ require_node() {
     echo "Node.js 20 or later is required." >&2
     exit 1
   fi
+
+  local node_major
+  node_major="$(node -p 'Number(process.versions.node.split(".")[0])' 2>/dev/null || true)"
+  if ! [[ "$node_major" =~ ^[0-9]+$ ]] || (( node_major < 20 )); then
+    echo "Node.js 20 or later is required; found $(node --version 2>/dev/null || echo unknown)." >&2
+    exit 1
+  fi
 }
 
 json_get() {
@@ -207,7 +214,94 @@ const force = forceFlag === "1";
 function readJson(path) {
   if (!fs.existsSync(path)) return {};
   const raw = fs.readFileSync(path, "utf8").trim();
-  return raw ? JSON.parse(raw) : {};
+  if (!raw) return {};
+  try {
+    return JSON.parse(raw);
+  } catch (jsonError) {
+    try {
+      return JSON.parse(stripJsonCommentsAndTrailingCommas(raw));
+    } catch (jsoncError) {
+      throw new Error(`Unable to parse JSON/JSONC file ${path}: ${jsoncError.message}`);
+    }
+  }
+}
+function stripJsonCommentsAndTrailingCommas(input) {
+  let withoutComments = "";
+  let inString = false;
+  let escaped = false;
+  let inLineComment = false;
+  let inBlockComment = false;
+  for (let index = 0; index < input.length; index += 1) {
+    const char = input[index];
+    const next = input[index + 1];
+    if (inLineComment) {
+      if (char === "\n" || char === "\r") {
+        inLineComment = false;
+        withoutComments += char;
+      }
+      continue;
+    }
+    if (inBlockComment) {
+      if (char === "*" && next === "/") {
+        inBlockComment = false;
+        index += 1;
+      }
+      continue;
+    }
+    if (inString) {
+      withoutComments += char;
+      if (escaped) escaped = false;
+      else if (char === "\\") escaped = true;
+      else if (char === "\"") inString = false;
+      continue;
+    }
+    if (char === "\"") {
+      inString = true;
+      withoutComments += char;
+      continue;
+    }
+    if (char === "/" && next === "/") {
+      inLineComment = true;
+      index += 1;
+      continue;
+    }
+    if (char === "/" && next === "*") {
+      inBlockComment = true;
+      index += 1;
+      continue;
+    }
+    withoutComments += char;
+  }
+
+  let output = "";
+  inString = false;
+  escaped = false;
+  for (let index = 0; index < withoutComments.length; index += 1) {
+    const char = withoutComments[index];
+    if (inString) {
+      output += char;
+      if (escaped) escaped = false;
+      else if (char === "\\") escaped = true;
+      else if (char === "\"") inString = false;
+      continue;
+    }
+    if (char === "\"") {
+      inString = true;
+      output += char;
+      continue;
+    }
+    if (char === ",") {
+      let lookahead = index + 1;
+      while (lookahead < withoutComments.length && /\s/.test(withoutComments[lookahead])) {
+        lookahead += 1;
+      }
+      if (withoutComments[lookahead] === "}" || withoutComments[lookahead] === "]") {
+        continue;
+      }
+    }
+    output += char;
+  }
+  return output;
 }
 function writeJson(path, value) {
   fs.mkdirSync(require("path").dirname(path), { recursive: true });

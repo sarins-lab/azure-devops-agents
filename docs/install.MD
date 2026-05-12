@@ -123,14 +123,14 @@ Use the online installer when users should not clone or download this repository
 The script runs from GitHub, writes user-level launcher/config/context files, and
 does not download the repository archive.
 
-PowerShell:
+Windows PowerShell:
 
 ```powershell
 $env:ADO_MCP_ORG = "<your-org>"
 irm https://raw.githubusercontent.com/sarins-lab/azure-devops-agents/main/scripts/install-online.ps1 | iex
 ```
 
-Codex only:
+Codex only on Windows:
 
 ```powershell
 $env:ADO_MCP_ORG = "<your-org>"
@@ -151,7 +151,7 @@ $env:ADO_MCP_ORG = "<your-org>"
 irm https://<your-powershell-tinyurl> | iex
 ```
 
-macOS/Linux:
+Linux/macOS:
 
 ```bash
 export ADO_MCP_ORG="<your-org>"

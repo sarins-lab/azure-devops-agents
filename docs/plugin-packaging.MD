@@ -33,8 +33,8 @@ Client packages should not fork the planning rules. They should consume or packa
 
 ### Online installer
 
-`scripts/install-online.ps1` is the full public, clone-free PowerShell installer.
-It is designed for direct online execution:
+`scripts/install-online.ps1` is the full public, clone-free Windows PowerShell
+installer. It is designed for direct online execution:
 
 ```powershell
 $env:ADO_MCP_ORG = "<your-org>"

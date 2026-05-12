@@ -11,6 +11,189 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+function Test-WindowsPlatform {
+    if ($PSVersionTable.PSEdition -eq "Desktop") {
+        return $true
+    }
+
+    $isWindowsVariable = Get-Variable -Name IsWindows -ErrorAction SilentlyContinue
+    if ($null -ne $isWindowsVariable) {
+        return [bool]$isWindowsVariable.Value
+    }
+
+    return $env:OS -eq "Windows_NT"
+}
+
+function Remove-JsonCommentsAndTrailingCommas {
+    param([string]$Content)
+
+    $withoutComments = [System.Text.StringBuilder]::new()
+    $inString = $false
+    $escaped = $false
+    $inLineComment = $false
+    $inBlockComment = $false
+
+    for ($i = 0; $i -lt $Content.Length; $i++) {
+        $ch = $Content[$i]
+        $next = if ($i + 1 -lt $Content.Length) { $Content[$i + 1] } else { [char]0 }
+
+        if ($inLineComment) {
+            if ($ch -eq "`r" -or $ch -eq "`n") {
+                $inLineComment = $false
+                [void]$withoutComments.Append($ch)
+            }
+            continue
+        }
+
+        if ($inBlockComment) {
+            if ($ch -eq "*" -and $next -eq "/") {
+                $inBlockComment = $false
+                $i++
+            }
+            continue
+        }
+
+        if ($inString) {
+            [void]$withoutComments.Append($ch)
+            if ($escaped) {
+                $escaped = $false
+            } elseif ($ch -eq "\") {
+                $escaped = $true
+            } elseif ($ch -eq '"') {
+                $inString = $false
+            }
+            continue
+        }
+
+        if ($ch -eq '"') {
+            $inString = $true
+            [void]$withoutComments.Append($ch)
+            continue
+        }
+
+        if ($ch -eq "/" -and $next -eq "/") {
+            $inLineComment = $true
+            $i++
+            continue
+        }
+
+        if ($ch -eq "/" -and $next -eq "*") {
+            $inBlockComment = $true
+            $i++
+            continue
+        }
+
+        [void]$withoutComments.Append($ch)
+    }
+
+    $cleaned = $withoutComments.ToString()
+    $withoutTrailingCommas = [System.Text.StringBuilder]::new()
+    $inString = $false
+    $escaped = $false
+
+    for ($i = 0; $i -lt $cleaned.Length; $i++) {
+        $ch = $cleaned[$i]
+
+        if ($inString) {
+            [void]$withoutTrailingCommas.Append($ch)
+            if ($escaped) {
+                $escaped = $false
+            } elseif ($ch -eq "\") {
+                $escaped = $true
+            } elseif ($ch -eq '"') {
+                $inString = $false
+            }
+            continue
+        }
+
+        if ($ch -eq '"') {
+            $inString = $true
+            [void]$withoutTrailingCommas.Append($ch)
+            continue
+        }
+
+        if ($ch -eq ",") {
+            $j = $i + 1
+            while ($j -lt $cleaned.Length -and [char]::IsWhiteSpace($cleaned[$j])) {
+                $j++
+            }
+
+            if ($j -lt $cleaned.Length -and ($cleaned[$j] -eq "}" -or $cleaned[$j] -eq "]")) {
+                continue
+            }
+        }
+
+        [void]$withoutTrailingCommas.Append($ch)
+    }
+
+    return $withoutTrailingCommas.ToString()
+}
+
+function ConvertFrom-JsonOrJsonC {
+    param(
+        [string]$Content,
+        [string]$Path
+    )
+
+    try {
+        return $Content | ConvertFrom-Json
+    } catch {
+        try {
+            return (Remove-JsonCommentsAndTrailingCommas -Content $Content) | ConvertFrom-Json
+        } catch {
+            throw "Unable to parse JSON/JSONC file '$Path'. Remove invalid comments or trailing commas, then rerun the installer. $($_.Exception.Message)"
+        }
+    }
+}
+
+function Write-Utf8NoBomFile {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [AllowNull()][string]$Value,
+        [switch]$NoNewline
+    )
+
+    $parent = Split-Path -Parent $Path
+    if ($parent) {
+        New-Item -ItemType Directory -Force -Path $parent | Out-Null
+    }
+
+    $text = if ($null -eq $Value) { "" } else { $Value }
+    if (-not $NoNewline -and -not $text.EndsWith("`n")) {
+        $text += "`n"
+    }
+
+    $encoding = [System.Text.UTF8Encoding]::new($false)
+    [System.IO.File]::WriteAllText($Path, $text, $encoding)
+}
+
+function Add-Utf8NoBomFile {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [AllowNull()][string]$Value
+    )
+
+    $parent = Split-Path -Parent $Path
+    if ($parent) {
+        New-Item -ItemType Directory -Force -Path $parent | Out-Null
+    }
+
+    $encoding = [System.Text.UTF8Encoding]::new($false)
+    [System.IO.File]::AppendAllText($Path, [string]$Value, $encoding)
+}
+
+function Set-CurrentAndPersistentUserEnvironmentVariable {
+    param(
+        [Parameter(Mandatory = $true)][string]$Name,
+        [Parameter(Mandatory = $true)][string]$Value
+    )
+
+    Set-Item -Path "Env:$Name" -Value $Value
+    if ($script:IsWindowsPlatform) {
+        [Environment]::SetEnvironmentVariable($Name, $Value, "User")
+    }
+}
+
 if (-not $PSBoundParameters.ContainsKey("Clients") -and -not [string]::IsNullOrWhiteSpace($env:ADO_MCP_CLIENTS)) {
     $Clients = @($env:ADO_MCP_CLIENTS -split "," | ForEach-Object { $_.Trim() } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
 }
@@ -41,6 +224,12 @@ if (-not $PSBoundParameters.ContainsKey("AuthToken") -and -not [string]::IsNullO
 if (-not $PSBoundParameters.ContainsKey("Force") -and $env:ADO_MCP_FORCE -match "^(1|true|TRUE|yes|YES)$") {
     $Force = $true
 }
+
+$script:IsWindowsPlatform = Test-WindowsPlatform
+if (-not $script:IsWindowsPlatform) {
+    throw "scripts/install-online.ps1 is supported on Windows only. On macOS/Linux, use: curl -fsSL https://raw.githubusercontent.com/sarins-lab/azure-devops-agents/main/scripts/install-online.sh | bash"
+}
+$script:McpPowerShellCommand = "powershell.exe"
 
 if ([string]::IsNullOrWhiteSpace($Organization)) {
     throw "Azure DevOps organization is required. Pass -Organization <org> or set ADO_MCP_ORG before running this script."
@@ -376,7 +565,7 @@ function Read-JsonFile {
         return $null
     }
 
-    return $content | ConvertFrom-Json
+    return ConvertFrom-JsonOrJsonC -Content $content -Path $Path
 }
 
 function Get-StringValue {
@@ -406,7 +595,7 @@ function Get-McpServerJson {
     param([string]$LauncherPath)
     return [ordered]@{
         type = "stdio"
-        command = "powershell.exe"
+        command = $script:McpPowerShellCommand
         args = @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $LauncherPath)
     }
 }
@@ -435,10 +624,10 @@ function Merge-MarkdownBlock {
         }
         $pattern = [regex]::Escape($start) + "[\s\S]*?" + [regex]::Escape($end)
         $updated = [regex]::Replace($existing, $pattern, $block)
-        Set-Content -LiteralPath $Path -Value $updated -Encoding utf8 -NoNewline
+        Write-Utf8NoBomFile -Path $Path -Value $updated -NoNewline
     } else {
         $separator = if ($existing -and -not $existing.EndsWith("`n")) { "`n`n" } else { "`n" }
-        Add-Content -LiteralPath $Path -Value "$separator$block" -Encoding utf8
+        Add-Utf8NoBomFile -Path $Path -Value "$separator$block`n"
     }
     Write-Host "  Context block written: $Path"
 }
@@ -450,8 +639,10 @@ function Merge-VSCodeMcpServer {
     New-Item -ItemType Directory -Force -Path $parent | Out-Null
 
     if (Test-Path -LiteralPath $Path) {
-        $raw = Get-Content -LiteralPath $Path -Raw
-        $json = if ([string]::IsNullOrWhiteSpace($raw)) { [pscustomobject]@{} } else { $raw | ConvertFrom-Json }
+        $json = Read-JsonFile -Path $Path
+        if ($null -eq $json) {
+            $json = [pscustomobject]@{}
+        }
     } else {
         $json = [pscustomobject]@{}
     }
@@ -470,7 +661,7 @@ function Merge-VSCodeMcpServer {
         $servers.PSObject.Properties.Remove("azure-devops")
     }
     $servers | Add-Member -NotePropertyName "azure-devops" -NotePropertyValue (Get-McpServerJson -LauncherPath $LauncherPath)
-    $json | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $Path -Encoding utf8
+    Write-Utf8NoBomFile -Path $Path -Value (($json | ConvertTo-Json -Depth 12) + "`n") -NoNewline
     Write-Host "  Configured VS Code MCP: $Path"
 }
 
@@ -481,8 +672,10 @@ function Merge-VSCodeCopilotInstructions {
     New-Item -ItemType Directory -Force -Path $parent | Out-Null
 
     if (Test-Path -LiteralPath $SettingsPath) {
-        $raw = Get-Content -LiteralPath $SettingsPath -Raw
-        $json = if ([string]::IsNullOrWhiteSpace($raw)) { [pscustomobject]@{} } else { $raw | ConvertFrom-Json }
+        $json = Read-JsonFile -Path $SettingsPath
+        if ($null -eq $json) {
+            $json = [pscustomobject]@{}
+        }
     } else {
         $json = [pscustomobject]@{}
     }
@@ -499,7 +692,7 @@ function Merge-VSCodeCopilotInstructions {
         $json | Add-Member -NotePropertyName $key -NotePropertyValue $instructions
     }
 
-    $json | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $SettingsPath -Encoding utf8
+    Write-Utf8NoBomFile -Path $SettingsPath -Value (($json | ConvertTo-Json -Depth 12) + "`n") -NoNewline
     Write-Host "  Added Copilot instruction reference: $SettingsPath"
 }
 
@@ -510,8 +703,10 @@ function Merge-VSCodePromptFileLocation {
     New-Item -ItemType Directory -Force -Path $parent | Out-Null
 
     if (Test-Path -LiteralPath $SettingsPath) {
-        $raw = Get-Content -LiteralPath $SettingsPath -Raw
-        $json = if ([string]::IsNullOrWhiteSpace($raw)) { [pscustomobject]@{} } else { $raw | ConvertFrom-Json }
+        $json = Read-JsonFile -Path $SettingsPath
+        if ($null -eq $json) {
+            $json = [pscustomobject]@{}
+        }
     } else {
         $json = [pscustomobject]@{}
     }
@@ -533,7 +728,7 @@ function Merge-VSCodePromptFileLocation {
         $locations | Add-Member -NotePropertyName $PromptDirectory -NotePropertyValue $true
     }
 
-    $json | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $SettingsPath -Encoding utf8
+    Write-Utf8NoBomFile -Path $SettingsPath -Value (($json | ConvertTo-Json -Depth 12) + "`n") -NoNewline
     Write-Host "  Added VS Code prompt file location: $PromptDirectory"
 }
 
@@ -554,7 +749,7 @@ $claudeContextBlock = Join-TextSections -Sections @($ClaudeContext, $McpRules)
 $copilotContextFile = Join-TextSections -Sections @($CopilotContext, $PlanStory, $PlanFeature, $PlanEpic, $McpRules)
 
 New-Item -ItemType Directory -Force -Path $adoHome | Out-Null
-Set-Content -LiteralPath $launcherTarget -Value $LauncherScript -Encoding utf8
+Write-Utf8NoBomFile -Path $launcherTarget -Value ($LauncherScript.TrimEnd() + "`n") -NoNewline
 Write-Host "Wrote online MCP launcher: $launcherTarget"
 
 if ((Test-Path -LiteralPath $configTarget) -and -not $Force) {
@@ -577,14 +772,13 @@ if ((Test-Path -LiteralPath $configTarget) -and -not $Force) {
     if (-not [string]::IsNullOrWhiteSpace($DockerImage)) {
         $config.dockerImage = $DockerImage
     }
-    $config | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $configTarget -Encoding utf8
+    Write-Utf8NoBomFile -Path $configTarget -Value (($config | ConvertTo-Json -Depth 8) + "`n") -NoNewline
     $mode = if ([string]::IsNullOrWhiteSpace($DockerImage)) { "npx (local)" } else { "Docker ($DockerImage)" }
     Write-Host "Wrote MCP config [$mode]: $configTarget"
 }
 
 if (-not [string]::IsNullOrWhiteSpace($DockerImage) -and -not [string]::IsNullOrWhiteSpace($AuthToken)) {
-    [Environment]::SetEnvironmentVariable("ADO_MCP_AUTH_TOKEN", $AuthToken, "User")
-    $env:ADO_MCP_AUTH_TOKEN = $AuthToken
+    Set-CurrentAndPersistentUserEnvironmentVariable -Name "ADO_MCP_AUTH_TOKEN" -Value $AuthToken
     Write-Host "Stored ADO_MCP_AUTH_TOKEN as a user environment variable for Docker MCP mode."
 }
 
@@ -598,7 +792,7 @@ if ($configureCodexNow) {
     $tomlBlock = [string]::Join("`n", @(
         "",
         "[mcp_servers.azure-devops]",
-        'command = "powershell.exe"',
+        "command = $(ConvertTo-TomlString -Value $script:McpPowerShellCommand)",
         ('args = ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", {0}]' -f (ConvertTo-TomlString -Value $launcherTarget))
     ))
 
@@ -610,11 +804,11 @@ if ($configureCodexNow) {
             $pattern = '(?ms)^\[mcp_servers\.azure-devops\]\r?\n.*?(?=^\[|\z)'
             $replacement = $tomlBlock.Trim() + "`n"
             $updatedToml = [regex]::Replace($existingToml, $pattern, $replacement)
-            Set-Content -LiteralPath $codexToml -Value $updatedToml -Encoding utf8 -NoNewline
+            Write-Utf8NoBomFile -Path $codexToml -Value $updatedToml -NoNewline
             Write-Host "  Replaced Codex MCP: $codexToml"
         }
     } else {
-        Add-Content -LiteralPath $codexToml -Value $tomlBlock -Encoding utf8
+        Add-Utf8NoBomFile -Path $codexToml -Value "$tomlBlock`n"
         Write-Host "  Configured Codex MCP: $codexToml"
     }
 
@@ -623,19 +817,20 @@ if ($configureCodexNow) {
 
 if ($configureVSCodeNow) {
     if ([string]::IsNullOrWhiteSpace($env:APPDATA)) {
-        throw "APPDATA is not set; cannot locate VS Code user settings."
+        throw "APPDATA is not set; cannot locate VS Code user settings on Windows. On macOS/Linux, use scripts/install-online.sh."
     }
 
     Write-Host "Configuring VS Code..."
 
-    $vsCodeMcpPath = Join-Path $env:APPDATA "Code\User\mcp.json"
-    $vsCodeSettingsPath = Join-Path $env:APPDATA "Code\User\settings.json"
+    $vsCodeUserDir = Join-Path $env:APPDATA "Code\User"
+    $vsCodeMcpPath = Join-Path $vsCodeUserDir "mcp.json"
+    $vsCodeSettingsPath = Join-Path $vsCodeUserDir "settings.json"
 
-    Set-Content -LiteralPath $copilotTarget -Value $copilotContextFile -Encoding utf8
+    Write-Utf8NoBomFile -Path $copilotTarget -Value ($copilotContextFile.TrimEnd() + "`n") -NoNewline
     New-Item -ItemType Directory -Force -Path $promptDir | Out-Null
-    Set-Content -LiteralPath (Join-Path $promptDir "plan-story.prompt.md") -Value $PromptPlanStory -Encoding utf8
-    Set-Content -LiteralPath (Join-Path $promptDir "plan-feature.prompt.md") -Value $PromptPlanFeature -Encoding utf8
-    Set-Content -LiteralPath (Join-Path $promptDir "plan-epic.prompt.md") -Value $PromptPlanEpic -Encoding utf8
+    Write-Utf8NoBomFile -Path (Join-Path $promptDir "plan-story.prompt.md") -Value ($PromptPlanStory.TrimEnd() + "`n") -NoNewline
+    Write-Utf8NoBomFile -Path (Join-Path $promptDir "plan-feature.prompt.md") -Value ($PromptPlanFeature.TrimEnd() + "`n") -NoNewline
+    Write-Utf8NoBomFile -Path (Join-Path $promptDir "plan-epic.prompt.md") -Value ($PromptPlanEpic.TrimEnd() + "`n") -NoNewline
 
     Merge-VSCodeMcpServer -Path $vsCodeMcpPath -LauncherPath $launcherTarget
     Merge-VSCodeCopilotInstructions -SettingsPath $vsCodeSettingsPath -ContextFilePath $copilotTarget
@@ -650,9 +845,9 @@ if ($configureClaudeNow) {
     if ($null -eq $claude) {
         Write-Host "  Claude CLI not found. MCP registration is pending."
         Write-Host "  Run manually after installing Claude Code:"
-        Write-Host "  claude mcp add --scope user azure-devops -- powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$launcherTarget`""
+        Write-Host "  claude mcp add --scope user azure-devops -- $script:McpPowerShellCommand -NoProfile -ExecutionPolicy Bypass -File `"$launcherTarget`""
     } else {
-        & claude mcp add --scope user azure-devops -- powershell.exe -NoProfile -ExecutionPolicy Bypass -File $launcherTarget
+        & claude mcp add --scope user azure-devops -- $script:McpPowerShellCommand -NoProfile -ExecutionPolicy Bypass -File $launcherTarget
         if ($LASTEXITCODE -ne 0) {
             exit $LASTEXITCODE
         }
