@@ -3,6 +3,8 @@ param(
     [string]$Organization,
     [ValidateSet("All", "Claude", "Codex", "VSCode")]
     [string[]]$Clients = @("All"),
+    [ValidateSet("npx", "docker")]
+    [string]$Mode = "npx",
     [string]$Authentication = "azcli",
     [string[]]$Domains = @("core", "work", "work-items", "repositories", "wiki"),
     [string]$DockerImage = "",
@@ -15,6 +17,7 @@ $ErrorActionPreference = "Stop"
 $installer = Join-Path $PSScriptRoot "install-ado-mcp-user.ps1"
 $installArgs = @{
     Organization   = $Organization
+    Mode           = $Mode
     Authentication = $Authentication
     Domains        = $Domains
 }

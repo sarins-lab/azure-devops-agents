@@ -1,9 +1,11 @@
 param(
     [Parameter(Mandatory = $true)]
     [string]$Organization,
+    [ValidateSet("npx", "docker")]
+    [string]$Mode = "npx",          # npx (default, recommended) or docker (experimental)
     [string]$Authentication = "azcli",
     [string[]]$Domains = @("core", "work", "work-items", "repositories", "wiki"),
-    [string]$DockerImage = "",      # e.g. "ghcr.io/sarins-lab/azure-devops-agents:latest"
+    [string]$DockerImage = "",      # Required when -Mode docker
     [string]$AuthToken = "",        # Optional PAT to persist as ADO_MCP_AUTH_TOKEN for Docker mode
     [switch]$ConfigureCodex,
     [switch]$ConfigureClaude,
@@ -282,8 +284,18 @@ if ($configureVSCodeNow -and -not (Test-Path -LiteralPath $promptSourceDir)) {
     throw "Required VS Code prompt source directory not found: $promptSourceDir"
 }
 
-if (-not [string]::IsNullOrWhiteSpace($DockerImage)) {
-    Write-Warning "Docker mode is experimental and not recommended for general use. Use the default global-binary mode where possible."
+# Infer mode from DockerImage if not explicitly set to docker
+if ($Mode -ne "docker" -and -not [string]::IsNullOrWhiteSpace($DockerImage)) {
+    $Mode = "docker"
+}
+
+if ($Mode -eq "docker") {
+    Write-Warning "Docker mode is experimental and not recommended for general use. Use -Mode npx (the default) unless you have a specific reason."
+    if ([string]::IsNullOrWhiteSpace($DockerImage)) {
+        throw "-DockerImage is required when -Mode docker is set."
+    }
+} else {
+    $DockerImage = ""
 }
 
 # Install launcher and config

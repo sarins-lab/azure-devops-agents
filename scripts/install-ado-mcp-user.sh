@@ -4,6 +4,7 @@ set -euo pipefail
 organization=""
 authentication="azcli"
 domains_csv="core,work,work-items,repositories,wiki"
+mode="npx"
 docker_image=""
 auth_token=""
 clients_csv="All"
@@ -16,10 +17,14 @@ Usage:
 
 Options:
   --organization <org>       Azure DevOps organization name. Required.
+  --mode <npx|docker>        How to run the MCP server. Default: npx.
+                               npx    — use globally installed binary (recommended).
+                               docker — [EXPERIMENTAL] run via Docker container;
+                                        requires --docker-image and ADO_MCP_AUTH_TOKEN.
+  --docker-image <image>     Docker image to use (--mode docker only).
+  --auth-token <pat>         Persist PAT as ADO_MCP_AUTH_TOKEN (--mode docker only).
   --authentication <method>  MCP authentication method. Default: azcli.
   --domains <csv>            Comma-separated MCP domains.
-  --docker-image <image>     Docker image for local stdio wrapper mode.
-  --auth-token <pat>         Persist PAT for Docker mode in ~/.ado-mcp/env.
   --clients <csv>            All, Claude, VSCode, Codex. Default: All.
   --force                    Replace existing matching client config blocks.
   -h, --help                 Show this help.
@@ -30,6 +35,10 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --organization|-o)
       organization="${2:-}"
+      shift 2
+      ;;
+    --mode)
+      mode="${2:-}"
       shift 2
       ;;
     --authentication)
@@ -68,16 +77,34 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+# Normalise mode — infer docker if --docker-image was provided without --mode
+if [[ -n "$docker_image" && "$mode" == "npx" ]]; then
+  mode="docker"
+fi
+
 if [[ -z "$organization" ]]; then
   echo "--organization is required." >&2
   usage >&2
   exit 1
 fi
 
-if [[ -n "$docker_image" ]]; then
-  echo "WARNING: Docker mode is experimental and not recommended for general use." >&2
-  echo "         Use the default npx/global-binary mode unless you have a specific reason." >&2
-fi
+case "$mode" in
+  npx)
+    docker_image=""
+    ;;
+  docker)
+    echo "WARNING: Docker mode is experimental and not recommended for general use." >&2
+    echo "         Use --mode npx (the default) unless you have a specific reason." >&2
+    if [[ -z "$docker_image" ]]; then
+      echo "--docker-image is required when --mode docker is set." >&2
+      exit 1
+    fi
+    ;;
+  *)
+    echo "Unknown --mode value: $mode. Expected 'npx' or 'docker'." >&2
+    exit 1
+    ;;
+esac
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 repo_root="$(cd "$script_dir/.." && pwd -P)"
