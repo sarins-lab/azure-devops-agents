@@ -89,8 +89,42 @@ curl -fsSL https://tinyurl.com/bdfuef4w | bash
 After install, restart Codex, VS Code, or Claude Code so each tool reloads its
 user-level MCP configuration.
 
-For Codex-only installs, raw GitHub URLs, Docker/PAT mode, service principal
-auth, or repo-local development installs, see [docs/install.MD](docs/install.MD).
+For Codex-only installs, raw GitHub URLs, service principal auth, or repo-local
+development installs, see [docs/install.MD](docs/install.MD).
+
+## Uninstall
+
+To remove all configuration added by the installer:
+
+```bash
+# Linux/macOS
+bash ./scripts/uninstall.sh
+```
+
+```powershell
+# Windows
+.\scripts\uninstall.ps1
+```
+
+To uninstall only specific tools, use `--clients` / `-Clients`:
+
+```bash
+bash ./scripts/uninstall.sh --clients Claude
+```
+
+```powershell
+.\scripts\uninstall.ps1 -Clients Claude,VSCode
+```
+
+To also remove the globally installed `@azure-devops/mcp` package:
+
+```bash
+bash ./scripts/uninstall.sh --purge-global
+```
+
+```powershell
+.\scripts\uninstall.ps1 -PurgeGlobal
+```
 
 ## Connect A Repository To An Azure DevOps Project
 
@@ -129,37 +163,52 @@ The assistant will:
 6. Ask before creating anything in Azure DevOps.
 7. Create the work items with parent-child links.
 
-## Docker Option
+## Docker Mode (Experimental)
 
-If your team prefers Docker, you can run the Azure DevOps helper through Docker instead of local Node.js.
+> **Warning:** Docker mode is experimental and not recommended for general use.
+> The default `--mode npx` installs a global binary that starts instantly and
+> works without Docker. Use Docker mode only if you have a specific reason.
+
+Docker mode runs the MCP server inside a container and authenticates with a
+Personal Access Token instead of the Azure CLI.
 
 Build the image:
-
-```powershell
-docker build -t ghcr.io/sarins-lab/azure-devops-agents:latest .\docker
-```
 
 ```bash
 docker build -t ghcr.io/sarins-lab/azure-devops-agents:latest ./docker
 ```
 
-Install using Docker mode:
-
 ```powershell
-.\scripts\install.ps1 `
-  -Organization <your-org> `
-  -DockerImage ghcr.io/sarins-lab/azure-devops-agents:latest `
-  -AuthToken <your-azure-devops-pat>
+docker build -t ghcr.io/sarins-lab/azure-devops-agents:latest .\docker
 ```
+
+Install using Docker mode:
 
 ```bash
 bash ./scripts/install.sh \
   --organization <your-org> \
+  --mode docker \
   --docker-image ghcr.io/sarins-lab/azure-devops-agents:latest \
   --auth-token <your-azure-devops-pat>
 ```
 
-Use Docker mode when you want each user's AI tool to run the same packaged helper environment.
+```powershell
+.\scripts\install.ps1 `
+  -Organization <your-org> `
+  -Mode docker `
+  -DockerImage ghcr.io/sarins-lab/azure-devops-agents:latest `
+  -AuthToken <your-azure-devops-pat>
+```
+
+To switch back to the default npx mode:
+
+```bash
+bash ./scripts/install.sh --organization <your-org> --mode npx --force
+```
+
+```powershell
+.\scripts\install.ps1 -Organization <your-org> -Mode npx -Force
+```
 
 ## What The Installer Changes
 
@@ -168,6 +217,7 @@ The installer adds user-level configuration for the selected tools. It does not 
 It creates or updates:
 
 - Azure DevOps helper configuration under `~/.ado-mcp`
+- `@azure-devops/mcp` installed globally via npm (for instant MCP server startup)
 - Claude Code plugin and planning context
 - Codex planning context under `~/.codex`
 - VS Code Copilot planning prompts and settings
