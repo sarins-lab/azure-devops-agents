@@ -28,7 +28,8 @@ function Remove-MarkdownBlock {
     if (-not (Test-Path -LiteralPath $Path)) { return }
     $start = "<!-- ${Marker}: start -->"
     $end   = "<!-- ${Marker}: end -->"
-    $text  = Get-Content -LiteralPath $Path -Raw
+    # Normalise CRLF so the regex works regardless of line endings.
+    $text = (Get-Content -LiteralPath $Path -Raw) -replace "`r`n", "`n"
     if (-not $text.Contains($start)) {
         Write-Host "  Block not found, nothing to remove: $Path"
         return
@@ -37,7 +38,7 @@ function Remove-MarkdownBlock {
     $escapedEnd   = [regex]::Escape($end)
     $text = [regex]::Replace($text, "`n?$escapedStart[\s\S]*?$escapedEnd`n?", "`n")
     $text = [regex]::Replace($text, "`n{3,}", "`n`n").TrimEnd() + "`n"
-    Set-Content -LiteralPath $Path -Value $text -NoNewline
+    Set-Content -LiteralPath $Path -Value $text -Encoding utf8 -NoNewline
     Write-Host "  Removed block from: $Path"
 }
 
@@ -102,7 +103,7 @@ if ($configureVSCode) {
         $mcp = Get-Content -LiteralPath $mcpPath -Raw | ConvertFrom-Json
         if ($mcp.servers -and $mcp.servers.PSObject.Properties["azure-devops"]) {
             $mcp.servers.PSObject.Properties.Remove("azure-devops")
-            $mcp | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $mcpPath
+            $mcp | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $mcpPath -Encoding utf8
             Write-Host "  Removed azure-devops from: $mcpPath"
         } else {
             Write-Host "  azure-devops not found in: $mcpPath"
@@ -131,7 +132,7 @@ if ($configureVSCode) {
                 $settings.PSObject.Properties.Remove($promptKey)
             }
         }
-        $settings | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $settingsPath
+        $settings | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $settingsPath -Encoding utf8
         Write-Host "  Updated VS Code settings: $settingsPath"
     } else {
         Write-Host "  VS Code settings.json not found, skipping."
@@ -172,11 +173,12 @@ if ($configureClaude -and $configureVSCode -and $configureCodex) {
 
 # ── Optional: global npm package ──────────────────────────────────────────────
 if ($PurgeGlobal) {
-    if (Get-Command mcp-server-azuredevops -ErrorAction SilentlyContinue) {
+    $npmLs = & npm ls -g --depth=0 @azure-devops/mcp 2>$null
+    if ($LASTEXITCODE -eq 0 -and $npmLs -match "@azure-devops/mcp") {
         & npm uninstall -g @azure-devops/mcp
         Write-Host "Uninstalled global package: @azure-devops/mcp"
     } else {
-        Write-Host "Global package not installed, skipping."
+        Write-Host "Global package @azure-devops/mcp not installed, skipping."
     }
 }
 

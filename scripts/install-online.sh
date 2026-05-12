@@ -571,15 +571,25 @@ if [[ "$authentication" == "azcli" ]]; then
   fi
 fi
 
-npx_args=("-y" "@azure-devops/mcp" "$organization" "--authentication" "$authentication")
+bin_args=("$organization" "--authentication" "$authentication")
 for domain in "${domains[@]}"; do
-  npx_args+=("-d" "$domain")
+  bin_args+=("-d" "$domain")
 done
 
-exec npx "${npx_args[@]}"
+# Prefer the globally installed binary for instant startup; fall back to npx.
+if command -v mcp-server-azuredevops >/dev/null 2>&1; then
+  exec mcp-server-azuredevops "${bin_args[@]}"
+else
+  exec npx -y @azure-devops/mcp "${bin_args[@]}"
+fi
 LAUNCHER
 chmod 700 "$launcher_target"
 echo "Wrote online MCP launcher: $launcher_target"
+
+# Install the MCP package globally so the launcher can use the direct binary
+# instead of npx, which has a slow cold-start that causes connection timeouts.
+echo "Installing @azure-devops/mcp globally..."
+npm install -g @azure-devops/mcp --silent || echo "WARN: global npm install failed — launcher will fall back to npx." >&2
 
 existing_docker=""
 existing_org=""

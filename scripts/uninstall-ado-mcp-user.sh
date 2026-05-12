@@ -65,16 +65,22 @@ user_home="${ADO_MCP_HOME:-$HOME}"
 ado_home="$user_home/.ado-mcp"
 
 # Remove a <!-- marker: start --> ... <!-- marker: end --> block from a file.
+# Skips gracefully if Node.js is not available.
 remove_markdown_block() {
   local path="$1"
   local marker="$2"
   [[ -f "$path" ]] || return 0
+  if ! command -v node >/dev/null 2>&1; then
+    echo "  WARN: Node.js not found — cannot remove block from $path. Remove manually." >&2
+    return 0
+  fi
   node - "$path" "$marker" <<'NODE'
 const fs = require("fs");
 const [path, marker] = process.argv.slice(2);
 const start = `<!-- ${marker}: start -->`;
 const end   = `<!-- ${marker}: end -->`;
-let text = fs.readFileSync(path, "utf8");
+// Normalise CRLF so the regex works regardless of line endings.
+let text = fs.readFileSync(path, "utf8").replace(/\r\n/g, "\n");
 if (!text.includes(start)) {
   console.log(`  Block not found, nothing to remove: ${path}`);
   process.exit(0);
@@ -224,11 +230,11 @@ fi
 
 # ── Optional: global npm package ──────────────────────────────────────────────
 if [[ $purge_global -eq 1 ]]; then
-  if command -v mcp-server-azuredevops >/dev/null 2>&1; then
+  if npm ls -g --depth=0 @azure-devops/mcp >/dev/null 2>&1; then
     npm uninstall -g @azure-devops/mcp
     echo "Uninstalled global package: @azure-devops/mcp"
   else
-    echo "Global package not installed, skipping."
+    echo "Global package @azure-devops/mcp not installed, skipping."
   fi
 fi
 

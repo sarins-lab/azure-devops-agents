@@ -428,13 +428,19 @@ if ($authentication -eq "azcli") {
     }
 }
 
-$npxArgs = @("-y", "@azure-devops/mcp", $organization, "--authentication", $authentication)
+$binArgs = @($organization, "--authentication", $authentication)
 foreach ($domain in $domains) {
-    $npxArgs += "-d"
-    $npxArgs += [string]$domain
+    $binArgs += "-d"
+    $binArgs += [string]$domain
 }
 
-& npx @npxArgs
+# Prefer the globally installed binary for instant startup; fall back to npx.
+$mcpBin = Get-Command mcp-server-azuredevops -ErrorAction SilentlyContinue
+if ($mcpBin) {
+    & mcp-server-azuredevops @binArgs
+} else {
+    & npx -y @azure-devops/mcp @binArgs
+}
 exit $LASTEXITCODE
 '@
 
@@ -790,6 +796,15 @@ $copilotContextFile = Join-TextSections -Sections @($CopilotContext, $PlanStory,
 New-Item -ItemType Directory -Force -Path $adoHome | Out-Null
 Write-Utf8NoBomFile -Path $launcherTarget -Value ($LauncherScript.TrimEnd() + "`n") -NoNewline
 Write-Host "Wrote online MCP launcher: $launcherTarget"
+
+# Install the MCP package globally so the launcher can use the direct binary
+# instead of npx, which has a slow cold-start that causes connection timeouts.
+Write-Host "Installing @azure-devops/mcp globally..."
+try {
+    & npm install -g @azure-devops/mcp --silent
+} catch {
+    Write-Warning "Global npm install failed — launcher will fall back to npx. ($_)"
+}
 
 if ((Test-Path -LiteralPath $configTarget) -and -not $Force) {
     $existingConfig = Read-JsonFile -Path $configTarget

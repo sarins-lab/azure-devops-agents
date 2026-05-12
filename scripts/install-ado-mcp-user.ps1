@@ -304,9 +304,14 @@ Copy-Item -LiteralPath $launcherSource -Destination $launcherTarget -Force
 
 # Always install/update the MCP package globally so the launcher uses the direct
 # binary rather than npx. npx has a cold-start delay that causes MCP clients to
-# time out during the initialize handshake.
+# time out during the initialize handshake. Best-effort: warn and continue if
+# the global install fails (e.g. requires admin rights).
 Write-Host "Installing @azure-devops/mcp globally..."
-& npm install -g @azure-devops/mcp --silent
+try {
+    & npm install -g @azure-devops/mcp --silent
+} catch {
+    Write-Warning "Global npm install failed — launcher will fall back to npx. ($_)"
+}
 
 if ((Test-Path -LiteralPath $configTarget) -and -not $Force) {
     $existingConfig  = Read-JsonFile -Path $configTarget

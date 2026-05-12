@@ -317,9 +317,10 @@ chmod 700 "$launcher_target"
 
 # Always install/update the MCP package globally so the launcher uses the direct
 # binary rather than npx. npx has a cold-start delay that causes MCP clients to
-# time out during the initialize handshake.
+# time out during the initialize handshake. Best-effort: warn and continue if
+# the global install fails (e.g. EACCES); the launcher will fall back to npx.
 echo "Installing @azure-devops/mcp globally..."
-npm install -g @azure-devops/mcp --silent
+npm install -g @azure-devops/mcp --silent || echo "WARN: global npm install failed — launcher will fall back to npx." >&2
 
 existing_docker=""
 existing_org=""
