@@ -117,7 +117,100 @@ export AZURE_TENANT_ID="<tenant>"
 
 The launcher detects these values and performs service principal login before starting the MCP server.
 
-## Install Commands
+## Online Install Commands
+
+Use the online installer when users should not clone or download this repository.
+The script runs from GitHub, writes user-level launcher/config/context files, and
+does not download the repository archive.
+
+PowerShell:
+
+```powershell
+$env:ADO_MCP_ORG = "<your-org>"
+irm https://raw.githubusercontent.com/sarins-lab/azure-devops-agents/main/scripts/install-online.ps1 | iex
+```
+
+Codex only:
+
+```powershell
+$env:ADO_MCP_ORG = "<your-org>"
+$env:ADO_MCP_CLIENTS = "Codex"
+irm https://raw.githubusercontent.com/sarins-lab/azure-devops-agents/main/scripts/install-online.ps1 | iex
+```
+
+If a TinyURL is available for PowerShell, point it at:
+
+```text
+https://raw.githubusercontent.com/sarins-lab/azure-devops-agents/main/scripts/install-online.ps1
+```
+
+Then users can run:
+
+```powershell
+$env:ADO_MCP_ORG = "<your-org>"
+irm https://<your-powershell-tinyurl> | iex
+```
+
+macOS/Linux:
+
+```bash
+export ADO_MCP_ORG="<your-org>"
+curl -fsSL https://raw.githubusercontent.com/sarins-lab/azure-devops-agents/main/scripts/install-online.sh | bash
+```
+
+Codex only:
+
+```bash
+export ADO_MCP_ORG="<your-org>"
+export ADO_MCP_CLIENTS="Codex"
+curl -fsSL https://raw.githubusercontent.com/sarins-lab/azure-devops-agents/main/scripts/install-online.sh | bash
+```
+
+For a TinyURL on macOS/Linux, point it at:
+
+```text
+https://raw.githubusercontent.com/sarins-lab/azure-devops-agents/main/scripts/install-online.sh
+```
+
+Then users can run:
+
+```bash
+export ADO_MCP_ORG="<your-org>"
+curl -fsSL https://<your-bash-tinyurl> | bash
+```
+
+Explicit parameter form:
+
+Install for all supported clients:
+
+```powershell
+$install = Invoke-RestMethod https://raw.githubusercontent.com/sarins-lab/azure-devops-agents/main/scripts/install-online.ps1
+& ([scriptblock]::Create($install)) -Organization <your-org>
+```
+
+Install for one client:
+
+```powershell
+$install = Invoke-RestMethod https://raw.githubusercontent.com/sarins-lab/azure-devops-agents/main/scripts/install-online.ps1
+& ([scriptblock]::Create($install)) -Organization <your-org> -Clients Codex
+& ([scriptblock]::Create($install)) -Organization <your-org> -Clients VSCode
+& ([scriptblock]::Create($install)) -Organization <your-org> -Clients Claude
+```
+
+One-line form:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "$install = Invoke-RestMethod 'https://raw.githubusercontent.com/sarins-lab/azure-devops-agents/main/scripts/install-online.ps1'; & ([scriptblock]::Create($install)) -Organization '<your-org>'"
+```
+
+The online installer embeds the launcher, Codex context, VS Code context/prompts,
+and Claude context. It registers Claude MCP when the Claude CLI is available, but
+it does not install the native Claude plugin package because that package
+requires a local marketplace directory.
+
+## Repo-Local Install Commands
+
+Use these commands when developing this repository from a local clone.
 
 Install for all supported clients:
 

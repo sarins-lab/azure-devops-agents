@@ -70,7 +70,88 @@ az config set core.enable_broker_on_windows=true
 
 ## Install
 
-Run this once from this repository:
+### Online install
+
+Use this path when you do not want to clone this repository. The online installer
+runs from GitHub, writes the user-level launcher/config/context files, and does
+not download the repository archive.
+
+PowerShell:
+
+```powershell
+$env:ADO_MCP_ORG = "<your-azure-devops-org>"
+irm https://raw.githubusercontent.com/sarins-lab/azure-devops-agents/main/scripts/install-online.ps1 | iex
+```
+
+Codex only:
+
+```powershell
+$env:ADO_MCP_ORG = "<your-org>"
+$env:ADO_MCP_CLIENTS = "Codex"
+irm https://raw.githubusercontent.com/sarins-lab/azure-devops-agents/main/scripts/install-online.ps1 | iex
+```
+
+If you create a TinyURL for PowerShell, point it at:
+
+```text
+https://raw.githubusercontent.com/sarins-lab/azure-devops-agents/main/scripts/install-online.ps1
+```
+
+Then the install command becomes:
+
+```powershell
+$env:ADO_MCP_ORG = "<your-org>"
+irm https://<your-powershell-tinyurl> | iex
+```
+
+macOS/Linux:
+
+```bash
+export ADO_MCP_ORG="<your-azure-devops-org>"
+curl -fsSL https://raw.githubusercontent.com/sarins-lab/azure-devops-agents/main/scripts/install-online.sh | bash
+```
+
+Codex only:
+
+```bash
+export ADO_MCP_ORG="<your-org>"
+export ADO_MCP_CLIENTS="Codex"
+curl -fsSL https://raw.githubusercontent.com/sarins-lab/azure-devops-agents/main/scripts/install-online.sh | bash
+```
+
+For a TinyURL on macOS/Linux, point it at:
+
+```text
+https://raw.githubusercontent.com/sarins-lab/azure-devops-agents/main/scripts/install-online.sh
+```
+
+Then users can run:
+
+```bash
+export ADO_MCP_ORG="<your-org>"
+curl -fsSL https://<your-bash-tinyurl> | bash
+```
+
+Explicit parameter form:
+
+```powershell
+$install = Invoke-RestMethod https://raw.githubusercontent.com/sarins-lab/azure-devops-agents/main/scripts/install-online.ps1
+& ([scriptblock]::Create($install)) -Organization <your-azure-devops-org>
+```
+
+Codex only:
+
+```powershell
+$install = Invoke-RestMethod https://raw.githubusercontent.com/sarins-lab/azure-devops-agents/main/scripts/install-online.ps1
+& ([scriptblock]::Create($install)) -Organization <your-org> -Clients Codex
+```
+
+After install, restart Codex, VS Code, or Claude Code so each tool reloads its
+user-level MCP configuration.
+
+### Repo-local install
+
+Run this once from a local clone of this repository:
 
 Windows:
 

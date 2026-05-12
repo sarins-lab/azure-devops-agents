@@ -86,7 +86,14 @@ if [[ $publish -eq 1 && $allow_dirty -eq 0 ]]; then
   fi
 fi
 
-bash -n scripts/install.sh scripts/install-ado-mcp-user.sh scripts/ado-mcp-launcher.sh scripts/deploy.sh
+bash -n scripts/install.sh scripts/install-ado-mcp-user.sh scripts/install-online.sh scripts/ado-mcp-launcher.sh scripts/deploy.sh
+if command -v pwsh >/dev/null 2>&1; then
+  pwsh -NoProfile -Command "\$tokens = \$null; \$errors = \$null; foreach (\$path in @('scripts/install-online.ps1')) { [System.Management.Automation.Language.Parser]::ParseFile(\$path, [ref]\$tokens, [ref]\$errors) | Out-Null }; if (\$errors.Count -gt 0) { \$errors | Format-List; exit 1 }"
+elif command -v powershell.exe >/dev/null 2>&1; then
+  powershell.exe -NoProfile -Command "\$tokens = \$null; \$errors = \$null; foreach (\$path in @('scripts/install-online.ps1')) { [System.Management.Automation.Language.Parser]::ParseFile(\$path, [ref]\$tokens, [ref]\$errors) | Out-Null }; if (\$errors.Count -gt 0) { \$errors | Format-List; exit 1 }"
+else
+  echo "Skipping PowerShell parser validation; pwsh/powershell.exe not found."
+fi
 node --check scripts/ado-mcp-launcher.mjs
 
 node - <<'NODE'
