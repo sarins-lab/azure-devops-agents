@@ -200,7 +200,7 @@ $install = Invoke-RestMethod https://raw.githubusercontent.com/sarins-lab/azure-
 One-line form:
 
 ```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "$install = Invoke-RestMethod 'https://raw.githubusercontent.com/sarins-lab/azure-devops-agents/main/scripts/install-online.ps1'; & ([scriptblock]::Create($install)) -Organization '<your-org>'"
+powershell.exe -NoProfile -ExecutionPolicy Bypass -Command '$install = Invoke-RestMethod "https://raw.githubusercontent.com/sarins-lab/azure-devops-agents/main/scripts/install-online.ps1"; & ([scriptblock]::Create($install)) -Organization "<your-org>"'
 ```
 
 The online installer embeds the launcher, Codex context, VS Code context/prompts,

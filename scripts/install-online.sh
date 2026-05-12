@@ -379,7 +379,35 @@ vscode_user_dir() {
   esac
 }
 
-tmp_dir="$(mktemp -d)"
+make_temp_dir() {
+  local attempt base dir
+
+  if command -v mktemp >/dev/null 2>&1; then
+    if dir="$(mktemp -d 2>/dev/null)"; then
+      printf '%s\n' "$dir"
+      return
+    fi
+
+    if dir="$(mktemp -d -t ado-mcp 2>/dev/null)"; then
+      printf '%s\n' "$dir"
+      return
+    fi
+  fi
+
+  base="${TMPDIR:-/tmp}"
+  for attempt in 1 2 3 4 5; do
+    dir="$base/ado-mcp.$$.$RANDOM.$attempt"
+    if mkdir -m 700 "$dir" 2>/dev/null; then
+      printf '%s\n' "$dir"
+      return
+    fi
+  done
+
+  echo "Unable to create temporary directory." >&2
+  exit 1
+}
+
+tmp_dir="$(make_temp_dir)"
 trap 'rm -rf "$tmp_dir"' EXIT
 codex_context="$tmp_dir/codex-context.md"
 claude_context="$tmp_dir/claude-context.md"
