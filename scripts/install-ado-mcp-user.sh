@@ -74,6 +74,11 @@ if [[ -z "$organization" ]]; then
   exit 1
 fi
 
+if [[ -n "$docker_image" ]]; then
+  echo "WARNING: Docker mode is experimental and not recommended for general use." >&2
+  echo "         Use the default npx/global-binary mode unless you have a specific reason." >&2
+fi
+
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 repo_root="$(cd "$script_dir/.." && pwd -P)"
 user_home="${ADO_MCP_HOME:-$HOME}"
@@ -283,12 +288,11 @@ mkdir -p "$ado_home"
 cp "$repo_root/scripts/ado-mcp-launcher.sh" "$launcher_target"
 chmod 700 "$launcher_target"
 
-# Install the MCP package globally so the launcher can use the direct binary
-# instead of npx, which has a slow cold-start that causes connection timeouts.
-if ! command -v mcp-server-azuredevops >/dev/null 2>&1; then
-  echo "Installing @azure-devops/mcp globally for faster MCP startup..."
-  npm install -g @azure-devops/mcp --silent
-fi
+# Always install/update the MCP package globally so the launcher uses the direct
+# binary rather than npx. npx has a cold-start delay that causes MCP clients to
+# time out during the initialize handshake.
+echo "Installing @azure-devops/mcp globally..."
+npm install -g @azure-devops/mcp --silent
 
 existing_docker=""
 existing_org=""

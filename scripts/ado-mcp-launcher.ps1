@@ -107,6 +107,7 @@ if ($null -ne $repoConfig -and $null -ne $repoConfig.PSObject.Properties["domain
 }
 
 if (-not [string]::IsNullOrWhiteSpace($dockerImage)) {
+    Write-Warning "Docker MCP mode is experimental. Use the default global-binary mode where possible." 2>&1 | Out-Host
     if ([string]::IsNullOrWhiteSpace($env:ADO_MCP_AUTH_TOKEN)) {
         throw "Docker MCP mode requires ADO_MCP_AUTH_TOKEN in the host environment. Set it to an Azure DevOps PAT before starting the IDE."
     }

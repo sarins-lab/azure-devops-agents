@@ -282,16 +282,19 @@ if ($configureVSCodeNow -and -not (Test-Path -LiteralPath $promptSourceDir)) {
     throw "Required VS Code prompt source directory not found: $promptSourceDir"
 }
 
+if (-not [string]::IsNullOrWhiteSpace($DockerImage)) {
+    Write-Warning "Docker mode is experimental and not recommended for general use. Use the default global-binary mode where possible."
+}
+
 # Install launcher and config
 New-Item -ItemType Directory -Force -Path $adoHome | Out-Null
 Copy-Item -LiteralPath $launcherSource -Destination $launcherTarget -Force
 
-# Install the MCP package globally so the launcher can use the direct binary
-# instead of npx, which has a slow cold-start that causes connection timeouts.
-if (-not (Get-Command mcp-server-azuredevops -ErrorAction SilentlyContinue)) {
-    Write-Host "Installing @azure-devops/mcp globally for faster MCP startup..."
-    & npm install -g @azure-devops/mcp --silent
-}
+# Always install/update the MCP package globally so the launcher uses the direct
+# binary rather than npx. npx has a cold-start delay that causes MCP clients to
+# time out during the initialize handshake.
+Write-Host "Installing @azure-devops/mcp globally..."
+& npm install -g @azure-devops/mcp --silent
 
 if ((Test-Path -LiteralPath $configTarget) -and -not $Force) {
     $existingConfig  = Read-JsonFile -Path $configTarget

@@ -104,6 +104,7 @@ if [[ -n "$repo_config_path" ]]; then
 fi
 
 if [[ -n "$docker_image" ]]; then
+  echo "WARNING: Docker MCP mode is experimental. Use the default global-binary mode where possible." >&2
   if [[ -z "${ADO_MCP_AUTH_TOKEN:-}" ]]; then
     echo "Docker MCP mode requires ADO_MCP_AUTH_TOKEN in the host environment." >&2
     exit 1
