@@ -138,17 +138,17 @@ $env:ADO_MCP_CLIENTS = "Codex"
 irm https://raw.githubusercontent.com/sarins-lab/azure-devops-agents/main/scripts/install-online.ps1 | iex
 ```
 
-If a TinyURL is available for PowerShell, point it at:
+The PowerShell TinyURL redirects to:
 
 ```text
 https://raw.githubusercontent.com/sarins-lab/azure-devops-agents/main/scripts/install-online.ps1
 ```
 
-Then users can run:
+Users can run:
 
 ```powershell
 $env:ADO_MCP_ORG = "<your-org>"
-irm https://<your-powershell-tinyurl> | iex
+irm https://tinyurl.com/yc3wvu6u | iex
 ```
 
 Linux/macOS:
@@ -166,17 +166,17 @@ export ADO_MCP_CLIENTS="Codex"
 curl -fsSL https://raw.githubusercontent.com/sarins-lab/azure-devops-agents/main/scripts/install-online.sh | bash
 ```
 
-For a TinyURL on macOS/Linux, point it at:
+The Linux/macOS TinyURL redirects to:
 
 ```text
 https://raw.githubusercontent.com/sarins-lab/azure-devops-agents/main/scripts/install-online.sh
 ```
 
-Then users can run:
+Users can run:
 
 ```bash
 export ADO_MCP_ORG="<your-org>"
-curl -fsSL https://<your-bash-tinyurl> | bash
+curl -fsSL https://tinyurl.com/bdfuef4w | bash
 ```
 
 Explicit parameter form:
