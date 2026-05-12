@@ -683,6 +683,13 @@ function Merge-VSCodeCopilotInstructions {
     $key = "github.copilot.chat.codeGeneration.instructions"
     $prop = $json.PSObject.Properties[$key]
     $instructions = if ($null -ne $prop) { @($prop.Value) } else { @() }
+    $alreadyPresent = $instructions | Where-Object { $_.PSObject.Properties["file"] -and $_.file -eq $ContextFilePath }
+
+    if ($null -ne $alreadyPresent -and -not $Force) {
+        Write-Host "  Copilot instruction already present. Use -Force to update: $SettingsPath"
+        return
+    }
+
     $instructions = @($instructions | Where-Object { -not ($_.PSObject.Properties["file"] -and $_.file -eq $ContextFilePath) })
     $instructions += [pscustomobject]@{ file = $ContextFilePath }
 
@@ -724,7 +731,13 @@ function Merge-VSCodePromptFileLocation {
         $locations = $prop.Value
     }
 
-    if ($null -eq $locations.PSObject.Properties[$PromptDirectory]) {
+    if ($null -ne $locations.PSObject.Properties[$PromptDirectory]) {
+        if (-not $Force) {
+            Write-Host "  VS Code prompt file location already present: $PromptDirectory"
+            return
+        }
+        $locations.PSObject.Properties[$PromptDirectory].Value = $true
+    } else {
         $locations | Add-Member -NotePropertyName $PromptDirectory -NotePropertyValue $true
     }
 
