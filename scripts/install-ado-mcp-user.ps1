@@ -334,8 +334,8 @@ if ((Test-Path -LiteralPath $configTarget) -and -not $Force) {
     if ($Domains.Count -gt 0) { $config.domains = $Domains }
     if (-not [string]::IsNullOrWhiteSpace($DockerImage)) { $config.dockerImage = $DockerImage }
     $config | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $configTarget -Encoding utf8
-    $mode = if ([string]::IsNullOrWhiteSpace($DockerImage)) { "npx (local)" } else { "Docker ($DockerImage)" }
-    Write-Host "Wrote MCP config [$mode]: $configTarget"
+    $modeLabel = if ([string]::IsNullOrWhiteSpace($DockerImage)) { "npx (local)" } else { "Docker ($DockerImage)" }
+    Write-Host "Wrote MCP config [$modeLabel]: $configTarget"
 }
 
 if (-not [string]::IsNullOrWhiteSpace($DockerImage) -and -not [string]::IsNullOrWhiteSpace($AuthToken)) {
