@@ -23,6 +23,45 @@ foreach ($client in $Clients) {
 $userHome = if ([string]::IsNullOrWhiteSpace($env:ADO_MCP_HOME)) { $HOME } else { $env:ADO_MCP_HOME }
 $adoHome  = Join-Path $userHome ".ado-mcp"
 
+# VS Code settings.json is JSONC — strip comments/trailing commas before parsing.
+function Remove-JsonCommentsAndTrailingCommas {
+    param([string]$Content)
+    $sb = [System.Text.StringBuilder]::new()
+    $inString = $false; $escaped = $false
+    $inLineComment = $false; $inBlockComment = $false
+    for ($i = 0; $i -lt $Content.Length; $i++) {
+        $ch = $Content[$i]
+        $next = if ($i + 1 -lt $Content.Length) { $Content[$i + 1] } else { [char]0 }
+        if ($inLineComment) {
+            if ($ch -eq "`r" -or $ch -eq "`n") { $inLineComment = $false; [void]$sb.Append($ch) }
+            continue
+        }
+        if ($inBlockComment) {
+            if ($ch -eq "*" -and $next -eq "/") { $inBlockComment = $false; $i++ }
+            continue
+        }
+        if ($inString) {
+            [void]$sb.Append($ch)
+            if ($escaped) { $escaped = $false } elseif ($ch -eq "\") { $escaped = $true } elseif ($ch -eq '"') { $inString = $false }
+            continue
+        }
+        if ($ch -eq "/" -and $next -eq "/") { $inLineComment = $true; continue }
+        if ($ch -eq "/" -and $next -eq "*") { $inBlockComment = $true; $i++; continue }
+        if ($ch -eq '"') { $inString = $true }
+        [void]$sb.Append($ch)
+    }
+    return [regex]::Replace($sb.ToString(), ',\s*([}\]])', '$1')
+}
+
+function ConvertFrom-JsonOrJsonC {
+    param([string]$Content, [string]$Path)
+    try { return $Content | ConvertFrom-Json }
+    catch {
+        try { return (Remove-JsonCommentsAndTrailingCommas -Content $Content) | ConvertFrom-Json }
+        catch { throw "Unable to parse JSONC file '$Path': $($_.Exception.Message)" }
+    }
+}
+
 function Remove-MarkdownBlock {
     param([string]$Path, [string]$Marker)
     if (-not (Test-Path -LiteralPath $Path)) { return }
@@ -113,7 +152,7 @@ if ($configureVSCode) {
     }
 
     if (Test-Path -LiteralPath $settingsPath) {
-        $settings = Get-Content -LiteralPath $settingsPath -Raw | ConvertFrom-Json
+        $settings = ConvertFrom-JsonOrJsonC -Content (Get-Content -LiteralPath $settingsPath -Raw) -Path $settingsPath
         $instructionKey = "github.copilot.chat.codeGeneration.instructions"
         $prop = $settings.PSObject.Properties[$instructionKey]
         if ($prop -and $prop.Value -is [array]) {
@@ -173,12 +212,16 @@ if ($configureClaude -and $configureVSCode -and $configureCodex) {
 
 # ── Optional: global npm package ──────────────────────────────────────────────
 if ($PurgeGlobal) {
-    $npmLs = & npm ls -g --depth=0 "@azure-devops/mcp" 2>$null
-    if ($LASTEXITCODE -eq 0 -and $npmLs -match "@azure-devops/mcp") {
-        & npm uninstall -g "@azure-devops/mcp"
-        Write-Host "Uninstalled global package: @azure-devops/mcp"
+    if (-not (Get-Command npm -ErrorAction SilentlyContinue)) {
+        Write-Warning "npm not found — cannot uninstall global package."
     } else {
-        Write-Host "Global package @azure-devops/mcp not installed, skipping."
+        $npmLs = & npm ls -g --depth=0 "@azure-devops/mcp" 2>$null
+        if ($LASTEXITCODE -eq 0 -and $npmLs -match "@azure-devops/mcp") {
+            & npm uninstall -g "@azure-devops/mcp"
+            Write-Host "Uninstalled global package: @azure-devops/mcp"
+        } else {
+            Write-Host "Global package @azure-devops/mcp not installed, skipping."
+        }
     }
 }
 
