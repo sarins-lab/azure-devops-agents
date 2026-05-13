@@ -570,6 +570,13 @@ if ($Mode -eq "docker") {
     if ([string]::IsNullOrWhiteSpace($DockerImage)) {
         throw "-DockerImage is required when -Mode docker is set."
     }
+    $dockerCommand = Get-Command docker -ErrorAction SilentlyContinue
+    if ($null -eq $dockerCommand) {
+        throw "Docker mode requires the Docker CLI in PATH. Install Docker or use -Mode npx."
+    }
+    if ([string]::IsNullOrWhiteSpace($AuthToken) -and [string]::IsNullOrWhiteSpace($env:ADO_MCP_AUTH_TOKEN)) {
+        throw "Docker mode requires ADO_MCP_AUTH_TOKEN in the environment or -AuthToken <pat> to persist it."
+    }
 } else {
     $DockerImage = ""
 }

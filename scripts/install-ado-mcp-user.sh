@@ -202,6 +202,14 @@ case "$mode" in
       echo "--docker-image is required when --mode docker is set." >&2
       exit 1
     fi
+    if ! command -v docker >/dev/null 2>&1; then
+      echo "Docker mode requires the Docker CLI in PATH. Install Docker or use --mode npx." >&2
+      exit 1
+    fi
+    if [[ -z "$auth_token" && -z "${ADO_MCP_AUTH_TOKEN:-}" ]]; then
+      echo "Docker mode requires ADO_MCP_AUTH_TOKEN in the environment or --auth-token <pat> to persist it." >&2
+      exit 1
+    fi
     ;;
   *)
     echo "Unknown --mode value: $mode. Expected 'npx' or 'docker'." >&2
