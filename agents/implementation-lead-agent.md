@@ -10,7 +10,7 @@ tools:
     "mcp__azure-devops__mcp_ado_repo_list_repos_by_project",
     "mcp__azure-devops__mcp_ado_repo_list_directory",
     "mcp__azure-devops__mcp_ado_repo_get_file_content",
-    "mcp__azure-devops__mcp_ado_search_code",
+    "mcp__azure-devops__mcp_ado_search_code"
   ]
 ---
 
