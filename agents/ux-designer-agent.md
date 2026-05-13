@@ -11,7 +11,7 @@ tools:
     "mcp__azure-devops__mcp_ado_wiki_list_wikis",
     "mcp__azure-devops__mcp_ado_wiki_list_pages",
     "mcp__azure-devops__mcp_ado_wiki_get_page",
-    "mcp__azure-devops__mcp_ado_wiki_get_page_content",
+    "mcp__azure-devops__mcp_ado_wiki_get_page_content"
   ]
 ---
 
