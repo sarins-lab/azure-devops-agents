@@ -43,7 +43,7 @@ Azure DevOps wiki Mermaid support is sensitive to syntax. Use this strict subset
 3. Use simple node IDs: letters, numbers, and underscores only; start with a letter.
 4. Put labels in square brackets with quoted ASCII text: `NodeA["Cloudflare Edge"]`.
 5. Avoid HTML, Markdown, angle-bracket placeholders, emoji, Unicode symbols, slashes in node IDs, and raw line breaks inside labels.
-6. Avoid `&`, `<`, `>`, `>=`, `<=`, pipes, and parentheses in labels when possible. Use words such as `and`, `at least`, `less than`.
+6. Avoid `&`, `<`, `>`, `>=`, `<=`, pipe characters inside label text, and parentheses in labels when possible. Use words such as `and`, `at least`, `less than`.
 7. Use simple edge labels: `A -->|"HTTPS"| B`.
 8. Keep subgraph names simple and do not link directly to or from a subgraph.
 9. Never use unescaped placeholder values like `<domain>` inside diagrams. Use `ExampleDomain` or describe placeholders outside the diagram.
