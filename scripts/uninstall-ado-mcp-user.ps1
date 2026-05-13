@@ -26,31 +26,107 @@ $adoHome  = Join-Path $userHome ".ado-mcp"
 # VS Code settings.json is JSONC — strip comments/trailing commas before parsing.
 function Remove-JsonCommentsAndTrailingCommas {
     param([string]$Content)
-    $sb = [System.Text.StringBuilder]::new()
-    $inString = $false; $escaped = $false
-    $inLineComment = $false; $inBlockComment = $false
-    for ($i = 0; $i -lt $Content.Length; $i++) {
-        $ch = $Content[$i]
-        $next = if ($i + 1 -lt $Content.Length) { $Content[$i + 1] } else { [char]0 }
+
+    $withoutComments = [System.Text.StringBuilder]::new()
+    $inString = $false
+    $escaped = $false
+    $inLineComment = $false
+    $inBlockComment = $false
+
+    for ($index = 0; $index -lt $Content.Length; $index++) {
+        $ch = $Content[$index]
+        $next = if ($index + 1 -lt $Content.Length) { $Content[$index + 1] } else { [char]0 }
+
         if ($inLineComment) {
-            if ($ch -eq "`r" -or $ch -eq "`n") { $inLineComment = $false; [void]$sb.Append($ch) }
+            if ($ch -eq "`r" -or $ch -eq "`n") {
+                $inLineComment = $false
+                [void]$withoutComments.Append($ch)
+            }
             continue
         }
+
         if ($inBlockComment) {
-            if ($ch -eq "*" -and $next -eq "/") { $inBlockComment = $false; $i++ }
+            if ($ch -eq "*" -and $next -eq "/") {
+                $inBlockComment = $false
+                $index++
+            }
             continue
         }
+
         if ($inString) {
-            [void]$sb.Append($ch)
-            if ($escaped) { $escaped = $false } elseif ($ch -eq "\") { $escaped = $true } elseif ($ch -eq '"') { $inString = $false }
+            [void]$withoutComments.Append($ch)
+            if ($escaped) {
+                $escaped = $false
+            } elseif ($ch -eq "\") {
+                $escaped = $true
+            } elseif ($ch -eq '"') {
+                $inString = $false
+            }
             continue
         }
-        if ($ch -eq "/" -and $next -eq "/") { $inLineComment = $true; continue }
-        if ($ch -eq "/" -and $next -eq "*") { $inBlockComment = $true; $i++; continue }
-        if ($ch -eq '"') { $inString = $true }
-        [void]$sb.Append($ch)
+
+        if ($ch -eq '"') {
+            $inString = $true
+            [void]$withoutComments.Append($ch)
+            continue
+        }
+
+        if ($ch -eq "/" -and $next -eq "/") {
+            $inLineComment = $true
+            $index++
+            continue
+        }
+
+        if ($ch -eq "/" -and $next -eq "*") {
+            $inBlockComment = $true
+            $index++
+            continue
+        }
+
+        [void]$withoutComments.Append($ch)
     }
-    return [regex]::Replace($sb.ToString(), ',\s*([}\]])', '$1')
+
+    $cleaned = $withoutComments.ToString()
+    $withoutTrailingCommas = [System.Text.StringBuilder]::new()
+    $inString = $false
+    $escaped = $false
+
+    for ($index = 0; $index -lt $cleaned.Length; $index++) {
+        $ch = $cleaned[$index]
+
+        if ($inString) {
+            [void]$withoutTrailingCommas.Append($ch)
+            if ($escaped) {
+                $escaped = $false
+            } elseif ($ch -eq "\") {
+                $escaped = $true
+            } elseif ($ch -eq '"') {
+                $inString = $false
+            }
+            continue
+        }
+
+        if ($ch -eq '"') {
+            $inString = $true
+            [void]$withoutTrailingCommas.Append($ch)
+            continue
+        }
+
+        if ($ch -eq ',') {
+            $j = $index + 1
+            while ($j -lt $cleaned.Length -and [char]::IsWhiteSpace($cleaned[$j])) {
+                $j++
+            }
+
+            if ($j -lt $cleaned.Length -and ($cleaned[$j] -eq '}' -or $cleaned[$j] -eq ']')) {
+                continue
+            }
+        }
+
+        [void]$withoutTrailingCommas.Append($ch)
+    }
+
+    return $withoutTrailingCommas.ToString()
 }
 
 function ConvertFrom-JsonOrJsonC {

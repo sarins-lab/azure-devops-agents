@@ -343,7 +343,24 @@ function stripJsonc(text) {
     if (ch === "/" && next === "*") { i += 2; while (i < text.length && !(text[i] === "*" && text[i+1] === "/")) i++; i++; continue; }
     out += ch;
   }
-  return out.replace(/,(\s*[}\]])/g, "$1");
+
+  let withoutTrailingCommas = "";
+  inStr = false;
+  escaped = false;
+  for (let i = 0; i < out.length; i++) {
+    const ch = out[i];
+    if (escaped) { withoutTrailingCommas += ch; escaped = false; continue; }
+    if (inStr && ch === "\\") { withoutTrailingCommas += ch; escaped = true; continue; }
+    if (ch === '"') { inStr = !inStr; withoutTrailingCommas += ch; continue; }
+    if (inStr) { withoutTrailingCommas += ch; continue; }
+    if (ch === ",") {
+      let j = i + 1;
+      while (j < out.length && /\s/.test(out[j])) j++;
+      if (j < out.length && (out[j] === "}" || out[j] === "]")) continue;
+    }
+    withoutTrailingCommas += ch;
+  }
+  return withoutTrailingCommas;
 }
 
 let settings;
