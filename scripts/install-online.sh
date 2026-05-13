@@ -86,7 +86,6 @@ require_node() {
 json_get() {
   local file="$1"
   local key="$2"
-  require_node
   node -e '
 const fs = require("fs");
 const file = process.argv[1];
@@ -191,7 +190,7 @@ if [[ -f "$_ado_existing_config" ]] && command -v node >/dev/null 2>&1; then
 const r = require("fs").readFileSync(process.argv[1], "utf8").trim();
 if (r) JSON.parse(r);
 ' "$_ado_existing_config" 2>/dev/null; then
-    echo "Warning: could not parse existing config $HOME/.ado-mcp/config.json — run with --organization to reconfigure." >&2
+    echo "Warning: could not parse existing config $_ado_existing_config — run with --organization to reconfigure." >&2
   else
     [[ -z "$organization" ]] && organization="$(json_get "$_ado_existing_config" organization)"
     [[ -z "$project" ]]      && project="$(json_get "$_ado_existing_config" project)"
@@ -200,6 +199,7 @@ if (r) JSON.parse(r);
   fi
 fi
 unset _ado_existing_config
+require_node
 
 if [[ -z "$organization" ]]; then
   echo "Azure DevOps organization is required. Pass --organization <org> or set ADO_MCP_ORG." >&2

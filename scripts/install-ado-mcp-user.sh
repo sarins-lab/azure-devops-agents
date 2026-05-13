@@ -198,7 +198,7 @@ if [[ -f "$_ado_existing_config" ]] && command -v node >/dev/null 2>&1; then
 const r = require("fs").readFileSync(process.argv[1], "utf8").trim();
 if (r) JSON.parse(r);
 ' "$_ado_existing_config" 2>/dev/null; then
-    echo "Warning: could not parse existing config $HOME/.ado-mcp/config.json — run with --organization to reconfigure." >&2
+    echo "Warning: could not parse existing config $_ado_existing_config — run with --organization to reconfigure." >&2
   else
     [[ -z "$organization" ]] && organization="$(json_get "$_ado_existing_config" organization)"
     [[ -z "$project" ]]      && project="$(json_get "$_ado_existing_config" project)"
