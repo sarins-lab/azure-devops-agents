@@ -79,6 +79,7 @@ domains_csv="core,work,work-items,repositories,wiki"
 project="${ADO_MCP_PROJECT:-}"
 team="${ADO_MCP_TEAM:-}"
 mode="npx"
+mode_explicit=0
 docker_image=""
 auth_token=""
 clients_csv="All"
@@ -95,7 +96,7 @@ Options:
                                npx    — prefer globally installed binary, fall back to npx (recommended).
                                docker — [EXPERIMENTAL] run via Docker container;
                                         requires --docker-image and ADO_MCP_AUTH_TOKEN.
-  --docker-image <image>     Docker image to use (--mode docker only).
+  --docker-image <image>     Docker image to use. Implies docker mode unless --mode was set explicitly.
   --auth-token <pat>         Persist PAT as ADO_MCP_AUTH_TOKEN (--mode docker only).
   --authentication <method>  MCP authentication method. Default: azcli.
   --domains <csv>            Comma-separated MCP domains.
@@ -115,6 +116,7 @@ while [[ $# -gt 0 ]]; do
       ;;
     --mode)
       mode="${2:-}"
+      mode_explicit=1
       shift 2
       ;;
     --authentication)
@@ -161,9 +163,16 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-# Normalise mode — infer docker if --docker-image was provided without --mode
-if [[ -n "$docker_image" && "$mode" == "npx" ]]; then
-  mode="docker"
+# Normalise mode — infer docker only when --mode was not provided explicitly.
+if [[ -n "$docker_image" ]]; then
+  if (( mode_explicit )); then
+    if [[ "$mode" != "docker" ]]; then
+      echo "--docker-image cannot be used with --mode $mode. Use --mode docker or omit --mode to infer Docker mode." >&2
+      exit 1
+    fi
+  else
+    mode="docker"
+  fi
 fi
 
 if [[ -z "$organization" ]]; then

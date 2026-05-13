@@ -7,7 +7,7 @@ param(
     [string[]]$Domains = @("core", "work", "work-items", "repositories", "wiki"),
     [string]$Project = $env:ADO_MCP_PROJECT,
     [string]$Team = $env:ADO_MCP_TEAM,
-    [string]$DockerImage = "",      # Required when -Mode docker
+    [string]$DockerImage = "",      # Required when -Mode docker; implies docker when -Mode is omitted
     [string]$AuthToken = "",        # Optional PAT to persist as ADO_MCP_AUTH_TOKEN for Docker mode
     [switch]$ConfigureCodex,
     [switch]$ConfigureClaude,
@@ -552,9 +552,17 @@ $copilotContextFile = Join-TextSections -Sections @(
     $sharedRupPlan,
     $sharedMcpRules
 )
-# Infer mode from DockerImage if not explicitly set to docker
-if ($Mode -ne "docker" -and -not [string]::IsNullOrWhiteSpace($DockerImage)) {
-    $Mode = "docker"
+$modeExplicit = $PSBoundParameters.ContainsKey("Mode")
+
+# Infer Docker mode only when -Mode was not provided explicitly.
+if (-not [string]::IsNullOrWhiteSpace($DockerImage)) {
+    if ($modeExplicit) {
+        if ($Mode -ne "docker") {
+            throw "-DockerImage cannot be used with -Mode $Mode. Use -Mode docker or omit -Mode to infer Docker mode."
+        }
+    } else {
+        $Mode = "docker"
+    }
 }
 
 if ($Mode -eq "docker") {

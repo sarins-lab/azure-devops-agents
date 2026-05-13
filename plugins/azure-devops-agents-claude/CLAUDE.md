@@ -1,6 +1,6 @@
 # Azure DevOps RUP Planning - Claude Adapter
 
-The `azure-devops` MCP server is registered at user level. The installer stores a default `project` and optional `team` in `~/.ado-mcp/config.json`. Place `.ado-mcp.json` in any repo root to override `project` and `team`; the launcher injects the resolved values automatically.
+The `azure-devops` MCP server is declared by the Claude plugin through the repo root `.mcp.json`, not through a standalone user-level registration. The installer stores a default `project` and optional `team` in `~/.ado-mcp/config.json`. Place `.ado-mcp.json` in any repo root to override `project` and `team`; the launcher injects the resolved values automatically.
 
 ## Canonical Model
 
