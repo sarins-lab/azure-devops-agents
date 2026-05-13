@@ -62,6 +62,45 @@ restore_interactive_shell_path() {
 
 restore_interactive_shell_path
 
+require_node() {
+  if ! command -v node >/dev/null 2>&1; then
+    echo "Node.js 20 or later is required." >&2
+    exit 1
+  fi
+
+  local node_major
+  node_major="$(node -p 'Number(process.versions.node.split(".")[0])' 2>/dev/null || true)"
+  if ! [[ "$node_major" =~ ^[0-9]+$ ]] || (( node_major < 20 )); then
+    echo "Node.js 20 or later is required; found $(node --version 2>/dev/null || echo unknown)." >&2
+    exit 1
+  fi
+
+  if [[ -z "$docker_image" ]] && \
+     ! command -v mcp-server-azuredevops >/dev/null 2>&1 && \
+     ! command -v npx >/dev/null 2>&1; then
+    echo "Non-Docker MCP mode requires either a global mcp-server-azuredevops binary or npx. Install npm with Node.js 20+ or install @azure-devops/mcp globally." >&2
+    exit 1
+  fi
+}
+
+json_get() {
+  local file="$1"
+  local key="$2"
+  require_node
+  node -e '
+const fs = require("fs");
+const file = process.argv[1];
+const key = process.argv[2];
+if (!fs.existsSync(file)) process.exit(0);
+const raw = fs.readFileSync(file, "utf8").trim();
+if (!raw) process.exit(0);
+const value = JSON.parse(raw)[key];
+if (value === undefined || value === null) process.exit(0);
+if (Array.isArray(value)) console.log(value.join(","));
+else console.log(String(value));
+' "$file" "$key"
+}
+
 organization="${ADO_MCP_ORG:-}"
 authentication="${ADO_MCP_AUTHENTICATION:-azcli}"
 domains_csv="${ADO_MCP_DOMAINS:-core,work,work-items,repositories,wiki}"
@@ -154,23 +193,10 @@ if (r) JSON.parse(r);
 ' "$_ado_existing_config" 2>/dev/null; then
     echo "Warning: could not parse existing config $HOME/.ado-mcp/config.json — run with --organization to reconfigure." >&2
   else
-    _ado_cfg_get() {
-      node -e '
-const fs = require("fs");
-const raw = fs.readFileSync(process.argv[1], "utf8").trim();
-if (!raw) process.exit(0);
-const d = JSON.parse(raw);
-const v = d[process.argv[2]];
-if (v !== undefined && v !== null) {
-  console.log(Array.isArray(v) ? v.join(",") : String(v));
-}
-' "$_ado_existing_config" "$1" 2>/dev/null || true
-    }
-    [[ -z "$organization" ]] && organization="$(_ado_cfg_get organization)"
-    [[ -z "$project" ]]      && project="$(_ado_cfg_get project)"
-    [[ -z "$team" ]]         && team="$(_ado_cfg_get team)"
-    [[ -z "$docker_image" ]] && docker_image="$(_ado_cfg_get dockerImage)"
-    unset -f _ado_cfg_get
+    [[ -z "$organization" ]] && organization="$(json_get "$_ado_existing_config" organization)"
+    [[ -z "$project" ]]      && project="$(json_get "$_ado_existing_config" project)"
+    [[ -z "$team" ]]         && team="$(json_get "$_ado_existing_config" team)"
+    [[ -z "$docker_image" ]] && docker_image="$(json_get "$_ado_existing_config" dockerImage)"
   fi
 fi
 unset _ado_existing_config
@@ -217,45 +243,6 @@ for client in "${clients[@]}"; do
       ;;
   esac
 done
-
-require_node() {
-  if ! command -v node >/dev/null 2>&1; then
-    echo "Node.js 20 or later is required." >&2
-    exit 1
-  fi
-
-  local node_major
-  node_major="$(node -p 'Number(process.versions.node.split(".")[0])' 2>/dev/null || true)"
-  if ! [[ "$node_major" =~ ^[0-9]+$ ]] || (( node_major < 20 )); then
-    echo "Node.js 20 or later is required; found $(node --version 2>/dev/null || echo unknown)." >&2
-    exit 1
-  fi
-
-  if [[ -z "$docker_image" ]] && \
-     ! command -v mcp-server-azuredevops >/dev/null 2>&1 && \
-     ! command -v npx >/dev/null 2>&1; then
-    echo "Non-Docker MCP mode requires either a global mcp-server-azuredevops binary or npx. Install npm with Node.js 20+ or install @azure-devops/mcp globally." >&2
-    exit 1
-  fi
-}
-
-json_get() {
-  local file="$1"
-  local key="$2"
-  require_node
-  node -e '
-const fs = require("fs");
-const file = process.argv[1];
-const key = process.argv[2];
-if (!fs.existsSync(file)) process.exit(0);
-const raw = fs.readFileSync(file, "utf8").trim();
-if (!raw) process.exit(0);
-const value = JSON.parse(raw)[key];
-if (value === undefined || value === null) process.exit(0);
-if (Array.isArray(value)) console.log(value.join(","));
-else console.log(String(value));
-' "$file" "$key"
-}
 
 toml_string() {
   local value="${1//\\/\\\\}"
