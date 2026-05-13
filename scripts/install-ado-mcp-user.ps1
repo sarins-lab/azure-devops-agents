@@ -82,7 +82,7 @@ function Remove-JsonCommentsAndTrailingCommas {
             [void]$withoutComments.Append($ch)
             if ($escaped) {
                 $escaped = $false
-            } elseif ($ch -eq '\\') {
+            } elseif ($ch -eq "\") {
                 $escaped = $true
             } elseif ($ch -eq '"') {
                 $inString = $false
@@ -123,7 +123,7 @@ function Remove-JsonCommentsAndTrailingCommas {
             [void]$withoutTrailingCommas.Append($ch)
             if ($escaped) {
                 $escaped = $false
-            } elseif ($ch -eq '\\') {
+            } elseif ($ch -eq "\") {
                 $escaped = $true
             } elseif ($ch -eq '"') {
                 $inString = $false
