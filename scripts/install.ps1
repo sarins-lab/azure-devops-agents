@@ -3,8 +3,12 @@ param(
     [string]$Organization,
     [ValidateSet("All", "Claude", "Codex", "VSCode")]
     [string[]]$Clients = @("All"),
+    [ValidateSet("npx", "docker")]
+    [string]$Mode = "npx",
     [string]$Authentication = "azcli",
     [string[]]$Domains = @("core", "work", "work-items", "repositories", "wiki"),
+    [string]$Project = $env:ADO_MCP_PROJECT,
+    [string]$Team = $env:ADO_MCP_TEAM,
     [string]$DockerImage = "",
     [string]$AuthToken = "",
     [switch]$Force
@@ -17,6 +21,18 @@ $installArgs = @{
     Organization   = $Organization
     Authentication = $Authentication
     Domains        = $Domains
+}
+
+if ($PSBoundParameters.ContainsKey("Mode")) {
+    $installArgs.Mode = $Mode
+}
+
+if (-not [string]::IsNullOrWhiteSpace($Project)) {
+    $installArgs.Project = $Project
+}
+
+if (-not [string]::IsNullOrWhiteSpace($Team)) {
+    $installArgs.Team = $Team
 }
 
 if (-not [string]::IsNullOrWhiteSpace($DockerImage)) {

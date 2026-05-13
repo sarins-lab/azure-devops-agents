@@ -63,7 +63,24 @@ function Get-StringValue {
         return $null
     }
 
-    return $value
+    return $value.Trim()
+}
+
+function Assert-Node20Available {
+    $nodeCommand = Get-Command node -ErrorAction SilentlyContinue
+    if ($null -eq $nodeCommand) {
+        throw "Node.js 20 or later is required for non-Docker MCP mode. Install Node.js 20+ or configure Docker MCP mode."
+    }
+
+    $nodeMajorText = (& node -p "Number(process.versions.node.split('.')[0])" 2>$null)
+    $nodeMajor = 0
+    if ($LASTEXITCODE -ne 0 -or -not [int]::TryParse([string]$nodeMajorText, [ref]$nodeMajor) -or $nodeMajor -lt 20) {
+        $nodeVersion = (& node --version 2>$null)
+        if ([string]::IsNullOrWhiteSpace($nodeVersion)) {
+            $nodeVersion = "unknown"
+        }
+        throw "Node.js 20 or later is required for non-Docker MCP mode; found $nodeVersion. Install Node.js 20+ or configure Docker MCP mode."
+    }
 }
 
 $userHome = if ([string]::IsNullOrWhiteSpace($env:ADO_MCP_HOME)) { $HOME } else { $env:ADO_MCP_HOME }
@@ -76,6 +93,9 @@ $organization = Get-StringValue -Object $userConfig -Name "organization"
 if ([string]::IsNullOrWhiteSpace($organization)) {
     $organization = $env:ADO_MCP_ORG
 }
+if (-not [string]::IsNullOrWhiteSpace($organization)) {
+    $organization = $organization.Trim()
+}
 
 if ([string]::IsNullOrWhiteSpace($organization)) {
     throw "Azure DevOps organization is not configured. Set ADO_MCP_ORG or create $userConfigPath."
@@ -85,15 +105,36 @@ $authentication = Get-StringValue -Object $userConfig -Name "authentication"
 if ([string]::IsNullOrWhiteSpace($authentication)) {
     $authentication = "azcli"
 }
+$authentication = $authentication.Trim()
 
 $dockerImage = Get-StringValue -Object $userConfig -Name "dockerImage"
 
-$project = Get-StringValue -Object $repoConfig -Name "project"
+$project = Get-StringValue -Object $userConfig -Name "project"
+if ([string]::IsNullOrWhiteSpace($project)) {
+    $project = $env:ADO_MCP_PROJECT
+}
+if (-not [string]::IsNullOrWhiteSpace($project)) {
+    $project = $project.Trim()
+}
+$repoProject = Get-StringValue -Object $repoConfig -Name "project"
+if (-not [string]::IsNullOrWhiteSpace($repoProject)) {
+    $project = $repoProject
+}
 if (-not [string]::IsNullOrWhiteSpace($project)) {
     $env:ado_mcp_project = $project
 }
 
-$team = Get-StringValue -Object $repoConfig -Name "team"
+$team = Get-StringValue -Object $userConfig -Name "team"
+if ([string]::IsNullOrWhiteSpace($team)) {
+    $team = $env:ADO_MCP_TEAM
+}
+if (-not [string]::IsNullOrWhiteSpace($team)) {
+    $team = $team.Trim()
+}
+$repoTeam = Get-StringValue -Object $repoConfig -Name "team"
+if (-not [string]::IsNullOrWhiteSpace($repoTeam)) {
+    $team = $repoTeam
+}
 if (-not [string]::IsNullOrWhiteSpace($team)) {
     $env:ado_mcp_team = $team
 }
@@ -107,6 +148,11 @@ if ($null -ne $repoConfig -and $null -ne $repoConfig.PSObject.Properties["domain
 }
 
 if (-not [string]::IsNullOrWhiteSpace($dockerImage)) {
+    Write-Warning "Docker MCP mode is experimental. Use the default global-binary mode where possible."
+    $dockerCommand = Get-Command docker -ErrorAction SilentlyContinue
+    if ($null -eq $dockerCommand) {
+        throw "Docker MCP mode requires the Docker CLI in PATH. Install Docker or configure non-Docker MCP mode."
+    }
     if ([string]::IsNullOrWhiteSpace($env:ADO_MCP_AUTH_TOKEN)) {
         throw "Docker MCP mode requires ADO_MCP_AUTH_TOKEN in the host environment. Set it to an Azure DevOps PAT before starting the IDE."
     }
@@ -169,11 +215,23 @@ if ($authentication -eq "azcli") {
     }
 }
 
-$npxArgs = @("-y", "@azure-devops/mcp", $organization, "--authentication", $authentication)
+Assert-Node20Available
+
+$binArgs = @($organization, "--authentication", $authentication)
 foreach ($domain in $domains) {
-    $npxArgs += "-d"
-    $npxArgs += [string]$domain
+    $binArgs += "-d"
+    $binArgs += [string]$domain
 }
 
-& npx @npxArgs
+# Prefer the globally installed binary for instant startup; fall back to npx.
+$mcpBin = Get-Command mcp-server-azuredevops -ErrorAction SilentlyContinue
+if ($mcpBin) {
+    & mcp-server-azuredevops @binArgs
+} else {
+    $npxBin = Get-Command npx -ErrorAction SilentlyContinue
+    if ($null -eq $npxBin) {
+        throw "Azure DevOps MCP launcher requires either a global mcp-server-azuredevops binary or npx in PATH. Install npm with Node.js 20+ or install @azure-devops/mcp globally."
+    }
+    & npx -y "@azure-devops/mcp" @binArgs
+}
 exit $LASTEXITCODE

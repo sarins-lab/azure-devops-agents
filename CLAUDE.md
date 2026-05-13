@@ -1,44 +1,67 @@
-# azure-devops-agents — Claude Code context
+# azure-devops-agents - Claude Code context
 
-This repo is a Claude Code plugin providing a BA → SA → Architect → PM multi-agent sprint planning pipeline for Azure DevOps. The four agents and three commands are loaded and available in this session.
+This plugin provides a RUP-style SDLC planning workflow for Azure DevOps.
 
-## MCP
+## Principle
 
-The `azure-devops` MCP server is registered at user level via `~/.ado-mcp/ado-mcp.ps1`. It reads `.ado-mcp.json` from the repo root and automatically injects `ado_mcp_project` and `ado_mcp_team`.
+Plan in RUP language. Persist in Azure DevOps process language only after discovering the project process.
 
-## Package layout
+Canonical concepts:
 
-Canonical planning workflows live in `shared/workflows/`; official Azure DevOps MCP tool rules live in `shared/mcp/`; client packages live in `plugins/azure-devops-agents-claude/`, `plugins/azure-devops-agents-vscode/`, and `plugins/azure-devops-agents-codex/`.
+- Stakeholder Request
+- Functional Requirement
+- Non-Functional Requirement
+- UX Artifact
+- Technical Requirement
+- Architecture
+- Technical Documentation
+- Delivery Slice
+- Task
 
-## Automatic planning pipeline
+## SDLC Roles
 
-Run the planning pipeline automatically when the user expresses planning intent — do not wait for an explicit command. Use the specialist agents for each phase:
+Run these phases in order and pause after each phase:
 
-| Signal | Level | Agents to invoke |
-|--------|-------|-----------------|
-| Epic, broad initiative, multiple features | Epic | ba-agent → sa-agent → architect-agent → pm-agent |
-| Feature, specific capability | Feature | ba-agent → sa-agent → architect-agent → pm-agent |
-| User story, "as a user", single behaviour | Story | ba-agent → sa-agent → pm-agent |
-| Ambiguous | Ask | "Are we planning an Epic, a Feature, or a User Story?" |
+1. Stakeholder Analyst: request, scope, value, affected users, success measures.
+2. Requirements Analyst: functional and non-functional requirements with acceptance criteria.
+3. UX Designer: user journeys, screen flows, Figma-ready screen specifications, accessibility notes, UX acceptance criteria.
+4. Solution Architect: cohesive architecture views, boundaries, runtime flows, deployment, data, security, operations, technical requirements, ADR candidates.
+5. Technical Writer: traceable technical documentation and Azure DevOps wiki-safe Mermaid diagrams from confirmed architecture.
+6. Delivery Planner: estimates, dependencies, splits, and iteration recommendation.
+7. Implementation Lead: task breakdown when requested or required.
 
-**Trigger phrases:** "we need to", "we should", "let's", "I want to", "plan", "design", "build", "create", "define", "implement"
+Do not create Azure DevOps work items until the user confirms the final plan.
 
-**Do not trigger** for queries about existing work ("what's in sprint 3?", "show me story #42").
+## Development Readiness Gate
 
-Pause for user confirmation after each agent phase before proceeding to the next.
+Before starting implementation, repository edits, deployment, or configuration work, verify that the request is traceable to an existing approved Azure DevOps work item or a confirmed RUP planning artifact. If the work is not already in Azure DevOps, trigger planning first by capturing it as a new Stakeholder Request or Change Request.
 
-## ADO field conventions
+Only start development after the required SDLC phases are confirmed, including UX Designer for user-facing work or an explicit UX-not-applicable decision for non-UI work.
 
-| Type | Required fields |
-|------|----------------|
-| Feature | Title, Description (SA technical approach), Tags |
-| User Story | Title, Acceptance Criteria (Given/When/Then), Description (SA notes + Architect risks), Story Points, Iteration Path |
-| Task | Title, Description, Remaining Work (hours), Assigned To |
+## Architecture And Diagrams
 
-## Traceability
+Architecture is the cohesive model of boundaries, components, runtime flows, deployment, data, security, operations, and decisions. Do not treat a technology list as architecture. Every technology choice must be confirmed or listed as an ADR candidate.
 
-After creating any work item, verify the parent link with `mcp_ado_wit_get_work_item`. Fix missing links with `mcp_ado_wit_work_items_link`. Never leave a work item parentless.
+Technical documentation must preserve the confirmed architecture and use Azure DevOps wiki-safe Mermaid: `::: mermaid` blocks, `graph TD;` or `graph LR;` for flowcharts, simple node IDs, quoted ASCII labels, no HTML, no Markdown labels, no angle-bracket placeholders, and no GitHub-style Mermaid code fences.
 
-## ADO create pattern
+## Routes
 
-Use `mcp_ado_wit_add_child_work_items` only for title, description, area path, iteration path, and parent link. Add Acceptance Criteria, Story Points, Tags, and other fields afterward with `mcp_ado_wit_update_work_item`.
+Run the planning workflow automatically when the user expresses planning intent, even without Azure DevOps, RUP, or route-name wording. Trigger on phrases such as "I want to", "we need to", "we should", "let's", "setup", "build", "design", "create", "define", "implement", "secure", "expose", "integrate", "document", "diagram", "estimate", and "break down".
+
+Example: "I want to setup a highly secure home lab exposed through Cloudflare Tunnel" maps to `/capture-request`.
+
+Preferred text routes:
+
+- `/capture-request`
+- `/define-requirements`
+- `/design-ux`
+- `/plan-requirement`
+- `/document-solution`
+- `/plan-delivery`
+- `/plan-task`
+
+## Azure DevOps Mapping
+
+Use `mcp_ado_wit_list_backlogs` and `mcp_ado_wit_get_work_item_type` to build the runtime process profile before writing anything. CMMI, Scrum, Agile, and Basic are target process mappings, not planning vocabulary.
+
+Create parent-before-child with `mcp_ado_wit_add_child_work_items`, update only discovered fields with `mcp_ado_wit_update_work_item`, and verify every link with `mcp_ado_wit_get_work_item`.

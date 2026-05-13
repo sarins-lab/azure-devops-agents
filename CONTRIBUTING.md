@@ -4,7 +4,7 @@
 
 - **New agents** — add a specialist to the pipeline (e.g. a Security Reviewer or API Designer)
 - **Improved agent prompts** — better cross-cutting checklists, more precise output formats, sharper behavioural guardrails
-- **New commands** — additional pipeline entry points (e.g. `/plan-task`, `/estimate-story`)
+- **New RUP routes** — additional planning intents inside the primary tool instruction files
 - **Bug reports** — agent output that is incorrect, hallucinated, or violates the output format contract
 - **Documentation** — setup guides, worked examples, platform-specific notes
 
@@ -16,7 +16,7 @@ Shared behavior belongs in `shared/` first:
 - Add Azure DevOps MCP tool rules to `shared/mcp/`
 - Then expose the behavior in the relevant package under `plugins/azure-devops-agents-claude/`, `plugins/azure-devops-agents-vscode/`, or `plugins/azure-devops-agents-codex/`
 
-Do not fork the planning logic independently per client. Claude can use native commands and specialist agents, but Codex and VS Code should receive equivalent behavior through their adapter files.
+Do not fork the planning logic independently per client. Each tool should have one primary instruction surface and should route into `shared/workflows/rup-planning.md`.
 
 ## Agent authoring rules
 
@@ -51,17 +51,9 @@ Rules:
 - Examples go in the body after the closing `---`, not inside the description
 - Every agent must define a step-by-step process, an explicit output format, and behavioural guardrails
 
-## Command authoring rules
+## Route authoring rules
 
-Each command in `commands/` must have YAML frontmatter:
-
-```
----
-description: <one sentence>
-argument-hint: <usage hint shown to the user>
-allowed-tools: ["mcp__plugin_azure-devops-agents-claude_azure-devops__*", "mcp__azure-devops__mcp_ado_<domain>_<operation>", ...]
----
-```
+Add new route behavior to the primary client instruction files and the shared RUP workflow. Do not add separate command or prompt files for process-specific route names.
 
 ## Testing
 
@@ -69,10 +61,10 @@ There is no automated test suite. Test by running the commands against a real Az
 
 1. Set up the MCP and client adapters: `.\scripts\install.ps1 -Organization <your-org>`
 2. Copy `.ado-mcp.example.json` to `.ado-mcp.json` and fill in your test project
-3. Run `/plan-story "a simple story"` and verify the output format
+3. Run `/capture-request "a simple stakeholder request"` and verify the output format
 
 ## Pull requests
 
-- One PR per agent or command change
-- Include a brief description of what the agent/command does differently and why
+- One PR per agent, route, or workflow change
+- Include a brief description of what the role or route does differently and why
 - If changing the output format of an agent, update any downstream agents that parse it

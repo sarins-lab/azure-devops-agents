@@ -1,9 +1,95 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+restore_interactive_shell_path() {
+  if command -v node >/dev/null 2>&1 && command -v npm >/dev/null 2>&1; then
+    return 0
+  fi
+
+  local nvm_bin=""
+  nvm_bin="$(printf '%s\n' "$HOME"/.nvm/versions/node/*/bin 2>/dev/null | sort -V | tail -n 1 || true)"
+  if [[ -n "$nvm_bin" && -d "$nvm_bin" ]]; then
+    case ":$PATH:" in
+      *":$nvm_bin:"*) ;;
+      *) PATH="$nvm_bin:$PATH" ;;
+    esac
+    export PATH
+
+    if command -v node >/dev/null 2>&1 && command -v npm >/dev/null 2>&1; then
+      return 0
+    fi
+  fi
+
+  local sentinel_start="__ADO_MCP_PATH_START__"
+  local sentinel_end="__ADO_MCP_PATH_END__"
+  local interactive_output=""
+  local interactive_path=""
+  local path_entry
+
+  interactive_output="$(ADO_MCP_INTERACTIVE_PATH_BOOTSTRAP=1 bash -ic "printf '%s%s%s' '$sentinel_start' \"\$PATH\" '$sentinel_end'" 2>/dev/null || true)"
+  if [[ "$interactive_output" != *"$sentinel_start"*"$sentinel_end"* ]]; then
+    return 0
+  fi
+
+  interactive_path="${interactive_output#*${sentinel_start}}"
+  interactive_path="${interactive_path%%${sentinel_end}*}"
+  if [[ -z "$interactive_path" ]]; then
+    return 0
+  fi
+
+  local old_ifs="$IFS"
+  local missing_path_entries=()
+  IFS=':'
+  for path_entry in $interactive_path; do
+    [[ -z "$path_entry" ]] && continue
+    case ":$PATH:" in
+      *":$path_entry:"*) ;;
+      *) missing_path_entries+=("$path_entry") ;;
+    esac
+  done
+  IFS="$old_ifs"
+  if (( ${#missing_path_entries[@]} > 0 )); then
+    local missing_path
+    missing_path="$(IFS=:; printf '%s' "${missing_path_entries[*]}")"
+    if [[ -n "$PATH" ]]; then
+      PATH="$missing_path:$PATH"
+    else
+      PATH="$missing_path"
+    fi
+  fi
+  export PATH
+}
+
+restore_interactive_shell_path
+
+require_node() {
+  if ! command -v node >/dev/null 2>&1; then
+    echo "Node.js 20 or later is required. Install Node.js and retry." >&2
+    exit 1
+  fi
+
+  local node_major
+  node_major="$(node -p 'Number(process.versions.node.split(".")[0])' 2>/dev/null || true)"
+  if ! [[ "$node_major" =~ ^[0-9]+$ ]] || (( node_major < 20 )); then
+    echo "Node.js 20 or later is required; found $(node --version 2>/dev/null || echo unknown)." >&2
+    exit 1
+  fi
+
+  if [[ "$mode" == "npx" ]] && \
+     ! command -v mcp-server-azuredevops >/dev/null 2>&1 && \
+     ! command -v npx >/dev/null 2>&1; then
+    echo "Non-Docker MCP mode requires either a global mcp-server-azuredevops binary or npx. Install npm with Node.js 20+ or rerun with --mode docker." >&2
+    exit 1
+  fi
+}
+
 organization=""
 authentication="azcli"
 domains_csv="core,work,work-items,repositories,wiki"
+project="${ADO_MCP_PROJECT:-}"
+team="${ADO_MCP_TEAM:-}"
+mode="npx"
+mode_explicit=0
 docker_image=""
 auth_token=""
 clients_csv="All"
@@ -16,10 +102,16 @@ Usage:
 
 Options:
   --organization <org>       Azure DevOps organization name. Required.
+  --mode <npx|docker>        How to run the MCP server. Default: npx.
+                               npx    — prefer globally installed binary, fall back to npx (recommended).
+                               docker — [EXPERIMENTAL] run via Docker container;
+                                        requires --docker-image and ADO_MCP_AUTH_TOKEN.
+  --docker-image <image>     Docker image to use. Implies docker mode unless --mode was set explicitly.
+  --auth-token <pat>         Persist PAT as ADO_MCP_AUTH_TOKEN (--mode docker only).
   --authentication <method>  MCP authentication method. Default: azcli.
   --domains <csv>            Comma-separated MCP domains.
-  --docker-image <image>     Docker image for local stdio wrapper mode.
-  --auth-token <pat>         Persist PAT for Docker mode in ~/.ado-mcp/env.
+  --project <project>        Default Azure DevOps project. Repo .ado-mcp.json overrides it.
+  --team <team>              Default Azure DevOps team. Repo .ado-mcp.json overrides it.
   --clients <csv>            All, Claude, VSCode, Codex. Default: All.
   --force                    Replace existing matching client config blocks.
   -h, --help                 Show this help.
@@ -32,12 +124,25 @@ while [[ $# -gt 0 ]]; do
       organization="${2:-}"
       shift 2
       ;;
+    --mode)
+      mode="${2:-}"
+      mode_explicit=1
+      shift 2
+      ;;
     --authentication)
       authentication="${2:-}"
       shift 2
       ;;
     --domains)
       domains_csv="${2:-}"
+      shift 2
+      ;;
+    --project)
+      project="${2:-}"
+      shift 2
+      ;;
+    --team)
+      team="${2:-}"
       shift 2
       ;;
     --docker-image)
@@ -68,11 +173,51 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+# Normalise mode — infer docker only when --mode was not provided explicitly.
+if [[ -n "$docker_image" ]]; then
+  if (( mode_explicit )); then
+    if [[ "$mode" != "docker" ]]; then
+      echo "--docker-image cannot be used with --mode $mode. Use --mode docker or omit --mode to infer Docker mode." >&2
+      exit 1
+    fi
+  else
+    mode="docker"
+  fi
+fi
+
 if [[ -z "$organization" ]]; then
   echo "--organization is required." >&2
   usage >&2
   exit 1
 fi
+
+case "$mode" in
+  npx)
+    docker_image=""
+    ;;
+  docker)
+    echo "WARNING: Docker mode is experimental and not recommended for general use." >&2
+    echo "         Use --mode npx (the default) unless you have a specific reason." >&2
+    if [[ -z "$docker_image" ]]; then
+      echo "--docker-image is required when --mode docker is set." >&2
+      exit 1
+    fi
+    if ! command -v docker >/dev/null 2>&1; then
+      echo "Docker mode requires the Docker CLI in PATH. Install Docker or use --mode npx." >&2
+      exit 1
+    fi
+    if [[ -z "$auth_token" && -z "${ADO_MCP_AUTH_TOKEN:-}" ]]; then
+      echo "Docker mode requires ADO_MCP_AUTH_TOKEN in the environment or --auth-token <pat> to persist it." >&2
+      exit 1
+    fi
+    ;;
+  *)
+    echo "Unknown --mode value: $mode. Expected 'npx' or 'docker'." >&2
+    exit 1
+    ;;
+esac
+
+require_node
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 repo_root="$(cd "$script_dir/.." && pwd -P)"
@@ -82,8 +227,6 @@ launcher_target="$ado_home/ado-mcp-launcher.sh"
 config_target="$ado_home/config.json"
 env_target="$ado_home/env"
 copilot_target="$ado_home/copilot-context.md"
-prompt_dir="$ado_home/prompts"
-prompt_source_dir="$repo_root/plugins/azure-devops-agents-vscode/prompts"
 
 configure_codex=0
 configure_claude=0
@@ -155,6 +298,35 @@ join_sections() {
   done
 }
 
+# Removes a legacy disabledMcpjsonServers entry so the plugin-owned MCP declaration runs.
+enable_plugin_mcp_json_server() {
+  local settings_path="$1"
+  local server_name="$2"
+  [[ -f "$settings_path" ]] || return 0
+  node - "$settings_path" "$server_name" <<'NODE'
+const fs = require("fs");
+const [settingsPath, serverName] = process.argv.slice(2);
+try {
+  const raw = fs.readFileSync(settingsPath, "utf8").trim();
+  if (!raw) process.exit(0);
+  const json = JSON.parse(raw);
+  if (!Array.isArray(json.disabledMcpjsonServers) || !json.disabledMcpjsonServers.includes(serverName)) {
+    process.exit(0);
+  }
+  const filtered = json.disabledMcpjsonServers.filter((entry) => entry !== serverName);
+  if (filtered.length === 0) {
+    delete json.disabledMcpjsonServers;
+  } else {
+    json.disabledMcpjsonServers = filtered;
+  }
+  fs.writeFileSync(settingsPath, JSON.stringify(json, null, 2) + "\n", "utf8");
+  console.log(`  Enabled plugin .mcp.json server '${serverName}' in Claude settings: ${settingsPath}`);
+} catch (err) {
+  console.error(`  WARN: Could not parse ${settingsPath} — remove disabledMcpjsonServers manually. (${err.message})`);
+}
+NODE
+}
+
 merge_markdown_block() {
   local path="$1"
   local marker="$2"
@@ -192,21 +364,55 @@ merge_vscode_json() {
   local settings_path="$2"
   local launcher_path="$3"
   local context_path="$4"
-  local prompts_path="$5"
-  local force_flag="$6"
+  local force_flag="$5"
   mkdir -p "$(dirname "$mcp_path")" "$(dirname "$settings_path")"
-  node - "$mcp_path" "$settings_path" "$launcher_path" "$context_path" "$prompts_path" "$force_flag" <<'NODE'
+  node - "$mcp_path" "$settings_path" "$launcher_path" "$context_path" "$force_flag" <<'NODE'
 const fs = require("fs");
-const [mcpPath, settingsPath, launcherPath, contextPath, promptsPath, forceFlag] = process.argv.slice(2);
+const [mcpPath, settingsPath, launcherPath, contextPath, forceFlag] = process.argv.slice(2);
 const force = forceFlag === "1";
 function readJson(path) {
   if (!fs.existsSync(path)) return {};
   const raw = fs.readFileSync(path, "utf8").trim();
   return raw ? JSON.parse(raw) : {};
 }
+function stripJsonc(text) {
+  let out = "", inStr = false, escaped = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i], next = text[i + 1];
+    if (escaped) { out += ch; escaped = false; continue; }
+    if (inStr && ch === "\\") { out += ch; escaped = true; continue; }
+    if (ch === '"') { inStr = !inStr; out += ch; continue; }
+    if (inStr) { out += ch; continue; }
+    if (ch === "/" && next === "/") { while (i < text.length && text[i] !== "\n") i++; continue; }
+    if (ch === "/" && next === "*") { i += 2; while (i < text.length && !(text[i] === "*" && text[i + 1] === "/")) i++; i++; continue; }
+    out += ch;
+  }
+  return out.replace(/,(\s*[}\]])/g, "$1");
+}
+function tryReadSettingsJson(path) {
+  if (!fs.existsSync(path)) return {};
+  const raw = fs.readFileSync(path, "utf8").trim();
+  if (!raw) return {};
+  try {
+    return JSON.parse(raw);
+  } catch (jsonError) {
+    try {
+      return JSON.parse(stripJsonc(raw));
+    } catch (jsoncError) {
+      console.error(`  WARN: Could not parse ${path} - skipping settings update. (${jsoncError.message})`);
+      return null;
+    }
+  }
+}
 function writeJson(path, value) {
   fs.mkdirSync(require("path").dirname(path), { recursive: true });
   fs.writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`, "utf8");
+}
+function backupBeforeJsonRewrite(path) {
+  if (!fs.existsSync(path)) return;
+  const backupPath = `${path}.ado-mcp.${Date.now()}.bak`;
+  fs.copyFileSync(path, backupPath);
+  console.log(`  Backed up file before JSON rewrite: ${backupPath}`);
 }
 const mcp = readJson(mcpPath);
 mcp.servers = mcp.servers || {};
@@ -221,21 +427,81 @@ if (!mcp.servers["azure-devops"] || force) {
 } else {
   console.log(`  MCP entry already present. Use --force to replace: ${mcpPath}`);
 }
-const settings = readJson(settingsPath);
-const instructionKey = "github.copilot.chat.codeGeneration.instructions";
-const instructions = Array.isArray(settings[instructionKey]) ? settings[instructionKey] : [];
-if (!instructions.some((item) => item && item.file === contextPath)) {
-  instructions.push({ file: contextPath });
+const settings = tryReadSettingsJson(settingsPath);
+if (settings !== null) {
+  let settingsChanged = false;
+  const instructionKey = "github.copilot.chat.codeGeneration.instructions";
+  const instructions = Array.isArray(settings[instructionKey]) ? settings[instructionKey] : [];
+  const instructionPresent = instructions.some((item) => item && item.file === contextPath);
+  if (instructionPresent && !force) {
+    console.log(`  Copilot instruction already present. Use --force to update: ${settingsPath}`);
+  } else {
+    settings[instructionKey] = instructions.filter((item) => !(item && item.file === contextPath));
+    settings[instructionKey].push({ file: contextPath });
+    settingsChanged = true;
+  }
+  if (settingsChanged) {
+    backupBeforeJsonRewrite(settingsPath);
+    writeJson(settingsPath, settings);
+    console.log(`  Updated VS Code settings: ${settingsPath}`);
+  }
 }
-settings[instructionKey] = instructions;
-const promptKey = "chat.promptFilesLocations";
-settings[promptKey] = settings[promptKey] && typeof settings[promptKey] === "object" && !Array.isArray(settings[promptKey])
-  ? settings[promptKey]
-  : {};
-settings[promptKey][promptsPath] = true;
-writeJson(settingsPath, settings);
-console.log(`  Updated VS Code settings: ${settingsPath}`);
 NODE
+}
+
+remove_legacy_vscode_prompts() {
+  local settings_path="$1"
+  local prompt_path="$2"
+  node - "$settings_path" "$prompt_path" <<'NODE'
+const fs = require("fs");
+const [settingsPath, promptPath] = process.argv.slice(2);
+if (!fs.existsSync(settingsPath)) process.exit(0);
+const raw = fs.readFileSync(settingsPath, "utf8").trim();
+if (!raw) process.exit(0);
+function stripJsonc(text) {
+  let out = "", inStr = false, escaped = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i], next = text[i + 1];
+    if (escaped) { out += ch; escaped = false; continue; }
+    if (inStr && ch === "\\") { out += ch; escaped = true; continue; }
+    if (ch === '"') { inStr = !inStr; out += ch; continue; }
+    if (inStr) { out += ch; continue; }
+    if (ch === "/" && next === "/") { while (i < text.length && text[i] !== "\n") i++; continue; }
+    if (ch === "/" && next === "*") { i += 2; while (i < text.length && !(text[i] === "*" && text[i + 1] === "/")) i++; i++; continue; }
+    out += ch;
+  }
+  return out.replace(/,(\s*[}\]])/g, "$1");
+}
+let settings;
+try {
+  settings = JSON.parse(stripJsonc(raw));
+} catch (err) {
+  console.error(`  WARN: Could not parse ${settingsPath} - skipping prompt cleanup. (${err.message})`);
+  process.exit(0);
+}
+const key = "chat.promptFilesLocations";
+let changed = false;
+if (settings[key] && typeof settings[key] === "object" && !Array.isArray(settings[key]) && Object.prototype.hasOwnProperty.call(settings[key], promptPath)) {
+  delete settings[key][promptPath];
+  changed = true;
+  console.log(`  Removed legacy VS Code prompt location: ${promptPath}`);
+}
+if (settings[key] && typeof settings[key] === "object" && !Array.isArray(settings[key]) && Object.keys(settings[key]).length === 0) {
+  delete settings[key];
+  changed = true;
+  console.log("  Removed empty VS Code prompt location setting");
+}
+if (changed) {
+  const backupPath = `${settingsPath}.ado-mcp.${Date.now()}.bak`;
+  fs.copyFileSync(settingsPath, backupPath);
+  console.log(`  Backed up file before JSON rewrite: ${backupPath}`);
+  fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + "\n", "utf8");
+}
+NODE
+  if [[ -d "$prompt_path" ]]; then
+    rm -rf "$prompt_path"
+    echo "  Removed legacy VS Code prompts: $prompt_path"
+  fi
 }
 
 write_codex_toml() {
@@ -279,39 +545,135 @@ vscode_user_dir() {
   esac
 }
 
+install_global_mcp_if_missing() {
+  if [[ "$mode" != "npx" ]]; then
+    return 0
+  fi
+
+  if command -v mcp-server-azuredevops >/dev/null 2>&1; then
+    echo "Global @azure-devops/mcp binary already available; skipping npm install."
+    return 0
+  fi
+
+  if command -v npm >/dev/null 2>&1; then
+    echo "Installing @azure-devops/mcp globally..."
+    npm install -g @azure-devops/mcp --silent || echo "WARN: global npm install failed - launcher will fall back to npx." >&2
+  else
+    echo "WARN: npm not found - skipping global install; launcher will use npx." >&2
+  fi
+}
+
+remove_claude_user_mcp_server() {
+  local success_message="$1"
+  local not_found_message="$2"
+  local failure_message="$3"
+  local list_output line name output
+  local removed=0
+  local failed=0
+
+  if ! list_output="$(claude mcp list 2>&1)"; then
+    printf '%s\n' "$list_output" >&2
+    echo "$failure_message" >&2
+    return 0
+  fi
+
+  while IFS= read -r line; do
+    [[ "$line" =~ \.ado-mcp[\\/](ado-mcp|ado-mcp-launcher)\.(sh|ps1) ]] || continue
+    name="${line%%:*}"
+    [[ -n "$name" ]] || continue
+
+    if output="$(claude mcp remove --scope user "$name" 2>&1)"; then
+      echo "  Removed legacy standalone MCP server: $name"
+      removed=1
+      continue
+    fi
+
+    if grep -Fq "No user-scoped MCP server found with name: $name" <<< "$output"; then
+      continue
+    fi
+
+    printf '%s\n' "$output" >&2
+    failed=1
+  done <<< "$list_output"
+
+  if (( failed != 0 )); then
+    echo "$failure_message" >&2
+    return 0
+  fi
+
+  if (( removed != 0 )); then
+    echo "$success_message"
+  else
+    echo "$not_found_message"
+  fi
+
+  return 0
+}
+
 mkdir -p "$ado_home"
 cp "$repo_root/scripts/ado-mcp-launcher.sh" "$launcher_target"
 chmod 700 "$launcher_target"
 
 existing_docker=""
 existing_org=""
+existing_project=""
+existing_team=""
 if [[ -f "$config_target" ]]; then
   existing_docker="$(json_get "$config_target" "dockerImage" || true)"
   existing_org="$(json_get "$config_target" "organization" || true)"
+  existing_project="$(json_get "$config_target" "project" || true)"
+  existing_team="$(json_get "$config_target" "team" || true)"
 fi
+
+if [[ -z "$project" ]]; then
+  project="$existing_project"
+fi
+if [[ -z "$team" ]]; then
+  team="$existing_team"
+fi
+if [[ -z "$project" && -t 0 ]]; then
+  read -r -p "Default Azure DevOps project (optional; repo .ado-mcp.json overrides): " project
+fi
+if [[ -n "$project" && -z "$team" && -t 0 ]]; then
+  read -r -p "Default Azure DevOps team (optional; repo .ado-mcp.json overrides): " team
+fi
+
 incoming_docker="$docker_image"
-if [[ -f "$config_target" && $force -eq 0 && ( "$existing_docker" != "$incoming_docker" || "$existing_org" != "$organization" ) ]]; then
-  echo "Config already exists with different settings. Use --force to overwrite: $config_target" >&2
-  exit 1
-fi
+config_changed=1
+if [[ -f "$config_target" && $force -eq 0 ]]; then
+  if [[ "$existing_docker" != "$incoming_docker" || "$existing_org" != "$organization" || "$existing_project" != "$project" || "$existing_team" != "$team" ]]; then
+    echo "Config already exists with different settings. Use --force to overwrite: $config_target" >&2
+    exit 1
+  fi
+  echo "MCP config already exists and matches - skipping (use --force to replace): $config_target"
+  config_changed=0
+else
+  config_authentication="$authentication"
+  if [[ -n "$docker_image" ]]; then
+    config_authentication="envvar"
+  fi
 
-config_authentication="$authentication"
-if [[ -n "$docker_image" ]]; then
-  config_authentication="envvar"
-fi
-
-node - "$config_target" "$organization" "$config_authentication" "$domains_csv" "$docker_image" <<'NODE'
+  node - "$config_target" "$organization" "$config_authentication" "$domains_csv" "$docker_image" "$project" "$team" <<'NODE'
 const fs = require("fs");
-const [path, organization, authentication, domainsCsv, dockerImage] = process.argv.slice(2);
+const [path, organization, authentication, domainsCsv, dockerImage, project, team] = process.argv.slice(2);
 const config = {
   organization,
   authentication,
   domains: domainsCsv.split(",").map((item) => item.trim()).filter(Boolean)
 };
+if (project) config.project = project;
+if (team) config.team = team;
 if (dockerImage) config.dockerImage = dockerImage;
 fs.writeFileSync(path, `${JSON.stringify(config, null, 2)}\n`, "utf8");
 NODE
-echo "Wrote MCP config: $config_target"
+  echo "Wrote MCP config: $config_target"
+fi
+
+if (( config_changed != 0 || force != 0 )); then
+  install_global_mcp_if_missing
+elif [[ "$mode" == "npx" ]]; then
+  echo "Global @azure-devops/mcp install check skipped because MCP config already matches. Use --force to retry."
+fi
 
 if [[ -n "$docker_image" && -n "$auth_token" ]]; then
   printf 'export ADO_MCP_AUTH_TOKEN=%s\n' "$(shell_quote "$auth_token")" > "$env_target"
@@ -328,20 +690,17 @@ copilot_context="$tmp_dir/copilot-context.md"
 
 join_sections \
   "$repo_root/plugins/azure-devops-agents-claude/CLAUDE.md" \
+  "$repo_root/shared/workflows/rup-planning.md" \
   "$repo_root/shared/mcp/azure-devops-tools.md" > "$claude_context"
 
 join_sections \
   "$repo_root/plugins/azure-devops-agents-codex/AGENTS.md" \
-  "$repo_root/shared/workflows/plan-story.md" \
-  "$repo_root/shared/workflows/plan-feature.md" \
-  "$repo_root/shared/workflows/plan-epic.md" \
+  "$repo_root/shared/workflows/rup-planning.md" \
   "$repo_root/shared/mcp/azure-devops-tools.md" > "$codex_context"
 
 join_sections \
   "$repo_root/plugins/azure-devops-agents-vscode/copilot-instructions.md" \
-  "$repo_root/shared/workflows/plan-story.md" \
-  "$repo_root/shared/workflows/plan-feature.md" \
-  "$repo_root/shared/workflows/plan-epic.md" \
+  "$repo_root/shared/workflows/rup-planning.md" \
   "$repo_root/shared/mcp/azure-devops-tools.md" > "$copilot_context"
 
 if [[ $configure_codex -eq 1 ]]; then
@@ -353,26 +712,24 @@ fi
 
 if [[ $configure_vscode -eq 1 ]]; then
   echo "Configuring VS Code..."
-  [[ -d "$prompt_source_dir" ]] || { echo "Prompt source directory not found: $prompt_source_dir" >&2; exit 1; }
-  mkdir -p "$prompt_dir"
-  cp "$prompt_source_dir"/*.prompt.md "$prompt_dir/"
   cp "$copilot_context" "$copilot_target"
   vs_code_dir="$(vscode_user_dir)"
-  merge_vscode_json "$vs_code_dir/mcp.json" "$vs_code_dir/settings.json" "$launcher_target" "$copilot_target" "$prompt_dir" "$force"
+  merge_vscode_json "$vs_code_dir/mcp.json" "$vs_code_dir/settings.json" "$launcher_target" "$copilot_target" "$force"
+  remove_legacy_vscode_prompts "$vs_code_dir/settings.json" "$ado_home/prompts"
 fi
 
-claude_mcp_registered=0
 claude_plugin_installed=0
 if [[ $configure_claude -eq 1 ]]; then
   echo "Configuring Claude Code..."
   if ! command -v claude >/dev/null 2>&1; then
     echo "  Claude CLI not found. Run manually after installing Claude Code:"
-    echo "  claude mcp add --scope user azure-devops -- bash \"$launcher_target\""
     echo "  claude plugin marketplace add --scope user \"$repo_root\""
     echo "  claude plugin install --scope user azure-devops-agents-claude@azure-devops-agents"
   else
-    claude mcp add --scope user azure-devops -- bash "$launcher_target"
-    claude_mcp_registered=1
+    remove_claude_user_mcp_server \
+      "  Removed legacy standalone MCP server registrations." \
+      "  Legacy standalone MCP servers not registered, continuing." \
+      "  WARN: could not remove legacy standalone MCP server registrations."
     if claude plugin marketplace list | grep -Eq '^[[:space:]]*>[[:space:]]+azure-devops-agents[[:space:]]*$'; then
       echo "  Claude marketplace already registered: azure-devops-agents"
     else
@@ -386,19 +743,20 @@ if [[ $configure_claude -eq 1 ]]; then
     claude_plugin_installed=1
   fi
   merge_markdown_block "$user_home/.claude/CLAUDE.md" "azure-devops-agents" "$claude_context" "$force"
+  enable_plugin_mcp_json_server "$user_home/.claude/settings.json" "azure-devops"
 fi
 
 echo
-echo "Done. Per-tool summary:"
+echo "Done. Client summary:"
 if [[ $configure_claude -eq 1 ]]; then
-  if [[ $claude_mcp_registered -eq 1 && $claude_plugin_installed -eq 1 ]]; then
-    echo "  Claude Code : MCP registered + plugin installed + ~/.claude/CLAUDE.md updated"
+  if [[ $claude_plugin_installed -eq 1 ]]; then
+    echo "  Claude Code : plugin installed + plugin MCP enabled + ~/.claude/CLAUDE.md updated"
   else
-    echo "  Claude Code : ~/.claude/CLAUDE.md updated (MCP/plugin pending if Claude CLI was absent)"
+    echo "  Claude Code : ~/.claude/CLAUDE.md updated (plugin install pending if Claude CLI was absent)"
   fi
 fi
 [[ $configure_codex -eq 1 ]] && echo "  Codex       : MCP registered + ~/.codex/AGENTS.md updated"
-[[ $configure_vscode -eq 1 ]] && echo "  VS Code     : MCP registered + Copilot instruction + prompt files added"
+[[ $configure_vscode -eq 1 ]] && echo "  VS Code     : MCP registered + Copilot instruction added"
 echo
 if [[ -n "$docker_image" ]]; then
   echo "Docker auth      : set ADO_MCP_AUTH_TOKEN before starting any tool, or use --auth-token."
@@ -406,3 +764,4 @@ else
   echo "Auth defaults to azcli. Run 'az login' if needed."
 fi
 echo 'Per-repo config  : add .ado-mcp.json -> { "project": "YourProject", "team": "YourTeam" }'
+echo "Project default  : stored in ~/.ado-mcp/config.json; repo .ado-mcp.json overrides it when present."

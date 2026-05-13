@@ -1,9 +1,13 @@
 param(
     [Parameter(Mandatory = $true)]
     [string]$Organization,
+    [ValidateSet("npx", "docker")]
+    [string]$Mode = "npx",          # npx (default, recommended) or docker (experimental)
     [string]$Authentication = "azcli",
     [string[]]$Domains = @("core", "work", "work-items", "repositories", "wiki"),
-    [string]$DockerImage = "",      # e.g. "ghcr.io/sarins-lab/azure-devops-agents:latest"
+    [string]$Project = $env:ADO_MCP_PROJECT,
+    [string]$Team = $env:ADO_MCP_TEAM,
+    [string]$DockerImage = "",      # Required when -Mode docker; implies docker when -Mode is omitted
     [string]$AuthToken = "",        # Optional PAT to persist as ADO_MCP_AUTH_TOKEN for Docker mode
     [switch]$ConfigureCodex,
     [switch]$ConfigureClaude,
@@ -22,7 +26,8 @@ $ErrorActionPreference = "Stop"
 function Read-JsonFile {
     param(
         [Parameter(Mandatory = $true)]
-        [string]$Path
+        [string]$Path,
+        [switch]$AllowJsonC
     )
 
     if (-not (Test-Path -LiteralPath $Path)) {
@@ -34,7 +39,148 @@ function Read-JsonFile {
         return $null
     }
 
+    if ($AllowJsonC) {
+        return ConvertFrom-JsonOrJsonC -Content $content -Path $Path
+    }
+
     return $content | ConvertFrom-Json
+}
+
+function Remove-JsonCommentsAndTrailingCommas {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Content
+    )
+
+    $withoutComments = [System.Text.StringBuilder]::new()
+    $inString = $false
+    $escaped = $false
+    $inLineComment = $false
+    $inBlockComment = $false
+
+    for ($index = 0; $index -lt $Content.Length; $index++) {
+        $ch = $Content[$index]
+        $next = if ($index + 1 -lt $Content.Length) { $Content[$index + 1] } else { [char]0 }
+
+        if ($inLineComment) {
+            if ($ch -eq "`n" -or $ch -eq "`r") {
+                $inLineComment = $false
+                [void]$withoutComments.Append($ch)
+            }
+            continue
+        }
+
+        if ($inBlockComment) {
+            if ($ch -eq '*' -and $next -eq '/') {
+                $inBlockComment = $false
+                $index++
+            }
+            continue
+        }
+
+        if ($inString) {
+            [void]$withoutComments.Append($ch)
+            if ($escaped) {
+                $escaped = $false
+            } elseif ($ch -eq "\") {
+                $escaped = $true
+            } elseif ($ch -eq '"') {
+                $inString = $false
+            }
+            continue
+        }
+
+        if ($ch -eq '"') {
+            $inString = $true
+            [void]$withoutComments.Append($ch)
+            continue
+        }
+
+        if ($ch -eq '/' -and $next -eq '/') {
+            $inLineComment = $true
+            $index++
+            continue
+        }
+
+        if ($ch -eq '/' -and $next -eq '*') {
+            $inBlockComment = $true
+            $index++
+            continue
+        }
+
+        [void]$withoutComments.Append($ch)
+    }
+
+    $cleaned = $withoutComments.ToString()
+    $withoutTrailingCommas = [System.Text.StringBuilder]::new()
+    $inString = $false
+    $escaped = $false
+
+    for ($index = 0; $index -lt $cleaned.Length; $index++) {
+        $ch = $cleaned[$index]
+
+        if ($inString) {
+            [void]$withoutTrailingCommas.Append($ch)
+            if ($escaped) {
+                $escaped = $false
+            } elseif ($ch -eq "\") {
+                $escaped = $true
+            } elseif ($ch -eq '"') {
+                $inString = $false
+            }
+            continue
+        }
+
+        if ($ch -eq '"') {
+            $inString = $true
+            [void]$withoutTrailingCommas.Append($ch)
+            continue
+        }
+
+        if ($ch -eq ',') {
+            $j = $index + 1
+            while ($j -lt $cleaned.Length -and [char]::IsWhiteSpace($cleaned[$j])) {
+                $j++
+            }
+
+            if ($j -lt $cleaned.Length -and ($cleaned[$j] -eq '}' -or $cleaned[$j] -eq ']')) {
+                continue
+            }
+        }
+
+        [void]$withoutTrailingCommas.Append($ch)
+    }
+
+    return $withoutTrailingCommas.ToString()
+}
+
+function ConvertFrom-JsonOrJsonC {
+    param(
+        [string]$Content,
+        [string]$Path
+    )
+
+    try {
+        return $Content | ConvertFrom-Json
+    } catch {
+        try {
+            return (Remove-JsonCommentsAndTrailingCommas -Content $Content) | ConvertFrom-Json
+        } catch {
+            throw "Unable to parse JSON/JSONC file '$Path'. Remove invalid comments or trailing commas, then rerun the installer. $($_.Exception.Message)"
+        }
+    }
+}
+
+function Backup-FileBeforeJsonRewrite {
+    param([string]$Path)
+
+    if (-not (Test-Path -LiteralPath $Path)) {
+        return
+    }
+
+    $backupPath = "$Path.ado-mcp.$(Get-Date -Format 'yyyyMMddHHmmssfff').bak"
+    Copy-Item -LiteralPath $Path -Destination $backupPath -Force
+    Write-Host "  Backed up file before JSON rewrite: $backupPath"
 }
 
 function Read-TextFile {
@@ -83,7 +229,17 @@ function Get-StringValue {
         return $null
     }
 
-    return $value
+    return $value.Trim()
+}
+
+function Get-NormalizedStringValue {
+    param([AllowNull()][string]$Value)
+
+    if ([string]::IsNullOrWhiteSpace($Value)) {
+        return $null
+    }
+
+    return $Value.Trim()
 }
 
 function ConvertTo-TomlString {
@@ -100,8 +256,144 @@ function Get-McpServerJson {
     }
 }
 
+function Get-NpmCommandPath {
+    $npmCmd = Get-Command npm.cmd -ErrorAction SilentlyContinue
+    if ($npmCmd) {
+        return $npmCmd.Source
+    }
+
+    $npmCmd = Get-Command npm -ErrorAction SilentlyContinue
+    if ($npmCmd) {
+        return $npmCmd.Source
+    }
+
+    return $null
+}
+
+function Install-GlobalMcpIfMissing {
+    if ($Mode -ne "npx") {
+        return
+    }
+
+    $mcpBin = Get-Command mcp-server-azuredevops -ErrorAction SilentlyContinue
+    if ($mcpBin) {
+        Write-Host "Global @azure-devops/mcp binary already available; skipping npm install."
+        return
+    }
+
+    $npmCommandPath = Get-NpmCommandPath
+    if ($npmCommandPath) {
+        Write-Host "Installing @azure-devops/mcp globally..."
+        & $npmCommandPath install -g "@azure-devops/mcp" --silent
+        if ($LASTEXITCODE -ne 0) {
+            Write-Warning "Global npm install failed (exit $LASTEXITCODE) - launcher will fall back to npx."
+        }
+    } else {
+        Write-Warning "npm not found - skipping global install; launcher will use npx."
+    }
+}
+
+function Remove-ClaudeUserMcpServer {
+    param(
+        [string]$SuccessMessage,
+        [string]$NotFoundMessage,
+        [string]$FailureMessage
+    )
+
+    $listOutput = (& claude mcp list 2>&1) -join "`n"
+    if ($LASTEXITCODE -ne 0) {
+        if (-not [string]::IsNullOrWhiteSpace($listOutput)) {
+            Write-Warning $listOutput
+        }
+        Write-Warning $FailureMessage
+        return
+    }
+
+    $removed = $false
+    $failed = $false
+    foreach ($line in ($listOutput -split "`r?`n")) {
+        if ($line -notmatch '\.ado-mcp[\\/](ado-mcp|ado-mcp-launcher)\.(sh|ps1)') {
+            continue
+        }
+
+        $colonIndex = $line.IndexOf(':')
+        if ($colonIndex -lt 0) {
+            continue
+        }
+
+        $name = $line.Substring(0, $colonIndex).Trim()
+        if ([string]::IsNullOrWhiteSpace($name)) {
+            continue
+        }
+
+        $output = (& claude mcp remove --scope user $name 2>&1) -join "`n"
+        if ($LASTEXITCODE -eq 0) {
+            Write-Host "  Removed legacy standalone MCP server: $name"
+            $removed = $true
+            continue
+        }
+
+        if ($output -match [regex]::Escape("No user-scoped MCP server found with name: $name")) {
+            continue
+        }
+
+        if (-not [string]::IsNullOrWhiteSpace($output)) {
+            Write-Warning $output
+        }
+        $failed = $true
+    }
+
+    if ($failed) {
+        Write-Warning $FailureMessage
+        return
+    }
+
+    if ($removed) {
+        Write-Host $SuccessMessage
+    } else {
+        Write-Host $NotFoundMessage
+    }
+}
+
 # Writes or replaces a delimited block inside a markdown file.
 # The block is wrapped in HTML comments so it survives manual edits above/below.
+function Enable-PluginMcpJsonServer {
+    param([string]$SettingsPath, [string]$ServerName)
+
+    if (-not (Test-Path -LiteralPath $SettingsPath)) {
+        return
+    }
+
+    try {
+        $raw = Get-Content -LiteralPath $SettingsPath -Raw
+        if ([string]::IsNullOrWhiteSpace($raw)) {
+            return
+        }
+
+        $json = $raw | ConvertFrom-Json
+        $prop = $json.PSObject.Properties["disabledMcpjsonServers"]
+        if ($null -eq $prop) {
+            return
+        }
+
+        $filtered = @($prop.Value | Where-Object { $_ -ne $ServerName })
+        if ($filtered.Count -eq @($prop.Value).Count) {
+            return
+        }
+
+        if ($filtered.Count -eq 0) {
+            $json.PSObject.Properties.Remove("disabledMcpjsonServers")
+        } else {
+            $prop.Value = $filtered
+        }
+
+        $json | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $SettingsPath -Encoding utf8
+        Write-Host "  Enabled plugin .mcp.json server '$ServerName' in Claude settings: $SettingsPath"
+    } catch {
+        Write-Warning "Could not update $SettingsPath - remove disabledMcpjsonServers manually. $($_.Exception.Message)"
+    }
+}
+
 function Merge-MarkdownBlock {
     param(
         [string]$Path,
@@ -173,8 +465,15 @@ function Merge-VSCodeCopilotInstructions {
     New-Item -ItemType Directory -Force -Path $parent | Out-Null
 
     if (Test-Path -LiteralPath $SettingsPath) {
-        $raw  = Get-Content -LiteralPath $SettingsPath -Raw
-        $json = if ([string]::IsNullOrWhiteSpace($raw)) { [pscustomobject]@{} } else { $raw | ConvertFrom-Json }
+        try {
+            $json = Read-JsonFile -Path $SettingsPath -AllowJsonC
+            if ($null -eq $json) {
+                $json = [pscustomobject]@{}
+            }
+        } catch {
+            Write-Warning "Could not parse $SettingsPath - skipping Copilot instruction update. $($_.Exception.Message)"
+            return
+        }
     } else {
         $json = [pscustomobject]@{}
     }
@@ -199,44 +498,50 @@ function Merge-VSCodeCopilotInstructions {
         $json | Add-Member -NotePropertyName $key -NotePropertyValue $instructions
     }
 
+    Backup-FileBeforeJsonRewrite -Path $SettingsPath
     $json | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $SettingsPath -Encoding utf8
     Write-Host "  Added Copilot instruction reference: $SettingsPath"
 }
 
-function Merge-VSCodePromptFileLocation {
+function Remove-LegacyVSCodePromptFiles {
     param([string]$SettingsPath, [string]$PromptDirectory)
 
-    $parent = Split-Path -Parent $SettingsPath
-    New-Item -ItemType Directory -Force -Path $parent | Out-Null
-
     if (Test-Path -LiteralPath $SettingsPath) {
-        $raw  = Get-Content -LiteralPath $SettingsPath -Raw
-        $json = if ([string]::IsNullOrWhiteSpace($raw)) { [pscustomobject]@{} } else { $raw | ConvertFrom-Json }
-    } else {
-        $json = [pscustomobject]@{}
-    }
-
-    $key = "chat.promptFilesLocations"
-    $prop = $json.PSObject.Properties[$key]
-    if ($null -eq $prop -or $null -eq $prop.Value -or -not ($prop.Value -is [pscustomobject])) {
-        $locations = [pscustomobject]@{}
-        if ($null -ne $prop) {
-            $prop.Value = $locations
-        } else {
-            $json | Add-Member -NotePropertyName $key -NotePropertyValue $locations
+        try {
+            $json = Read-JsonFile -Path $SettingsPath -AllowJsonC
+        } catch {
+            Write-Warning "Could not parse $SettingsPath - skipping legacy prompt cleanup in settings. $($_.Exception.Message)"
+            $json = $null
         }
-    } else {
-        $locations = $prop.Value
+
+        if ($null -ne $json) {
+            $key = "chat.promptFilesLocations"
+            $prop = $json.PSObject.Properties[$key]
+            $changed = $false
+            if ($null -ne $prop -and $null -ne $prop.Value -and $prop.Value -is [pscustomobject]) {
+                $locations = $prop.Value
+                if ($null -ne $locations.PSObject.Properties[$PromptDirectory]) {
+                    $locations.PSObject.Properties.Remove($PromptDirectory)
+                    $changed = $true
+                    Write-Host "  Removed legacy VS Code prompt location: $PromptDirectory"
+                }
+                if (@($locations.PSObject.Properties).Count -eq 0) {
+                    $json.PSObject.Properties.Remove($key)
+                    $changed = $true
+                    Write-Host "  Removed empty VS Code prompt location setting"
+                }
+            }
+            if ($changed) {
+                Backup-FileBeforeJsonRewrite -Path $SettingsPath
+                $json | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $SettingsPath -Encoding utf8
+            }
+        }
     }
 
-    if ($null -ne $locations.PSObject.Properties[$PromptDirectory]) {
-        Write-Host "  VS Code prompt file location already present: $PromptDirectory"
-    } else {
-        $locations | Add-Member -NotePropertyName $PromptDirectory -NotePropertyValue $true
-        Write-Host "  Added VS Code prompt file location: $PromptDirectory"
+    if (Test-Path -LiteralPath $PromptDirectory) {
+        Remove-Item -LiteralPath $PromptDirectory -Recurse -Force
+        Write-Host "  Removed legacy VS Code prompts: $PromptDirectory"
     }
-
-    $json | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $SettingsPath -Encoding utf8
 }
 
 # -- Main -----------------------------------------------------------------------
@@ -251,60 +556,111 @@ $adoHome       = Join-Path $userHome ".ado-mcp"
 $launcherTarget = Join-Path $adoHome "ado-mcp.ps1"
 $configTarget  = Join-Path $adoHome "config.json"
 $copilotTarget = Join-Path $adoHome "copilot-context.md"
-$promptDir     = Join-Path $adoHome "prompts"
 $repoRoot      = Split-Path -Parent $PSScriptRoot
 $launcherSource = Join-Path $repoRoot "scripts\ado-mcp-launcher.ps1"
-$promptSourceDir = Join-Path $repoRoot "plugins\azure-devops-agents-vscode\prompts"
 
-$sharedPlanStory = Read-TextFile -Path (Join-Path $repoRoot "shared\workflows\plan-story.md")
-$sharedPlanFeature = Read-TextFile -Path (Join-Path $repoRoot "shared\workflows\plan-feature.md")
-$sharedPlanEpic = Read-TextFile -Path (Join-Path $repoRoot "shared\workflows\plan-epic.md")
+$sharedRupPlan = Read-TextFile -Path (Join-Path $repoRoot "shared\workflows\rup-planning.md")
 $sharedMcpRules = Read-TextFile -Path (Join-Path $repoRoot "shared\mcp\azure-devops-tools.md")
 $claudeContextBlock = Join-TextSections -Sections @(
     (Read-TextFile -Path (Join-Path $repoRoot "plugins\azure-devops-agents-claude\CLAUDE.md")),
+    $sharedRupPlan,
     $sharedMcpRules
 )
 $codexContextBlock = Join-TextSections -Sections @(
     (Read-TextFile -Path (Join-Path $repoRoot "plugins\azure-devops-agents-codex\AGENTS.md")),
-    $sharedPlanStory,
-    $sharedPlanFeature,
-    $sharedPlanEpic,
+    $sharedRupPlan,
     $sharedMcpRules
 )
 $copilotContextFile = Join-TextSections -Sections @(
     (Read-TextFile -Path (Join-Path $repoRoot "plugins\azure-devops-agents-vscode\copilot-instructions.md")),
-    $sharedPlanStory,
-    $sharedPlanFeature,
-    $sharedPlanEpic,
+    $sharedRupPlan,
     $sharedMcpRules
 )
-if ($configureVSCodeNow -and -not (Test-Path -LiteralPath $promptSourceDir)) {
-    throw "Required VS Code prompt source directory not found: $promptSourceDir"
+$modeExplicit = $PSBoundParameters.ContainsKey("Mode")
+
+# Infer Docker mode only when -Mode was not provided explicitly.
+if (-not [string]::IsNullOrWhiteSpace($DockerImage)) {
+    if ($modeExplicit) {
+        if ($Mode -ne "docker") {
+            throw "-DockerImage cannot be used with -Mode $Mode. Use -Mode docker or omit -Mode to infer Docker mode."
+        }
+    } else {
+        $Mode = "docker"
+    }
+}
+
+if ($Mode -eq "docker") {
+    Write-Warning "Docker mode is experimental and not recommended for general use. Use -Mode npx (the default) unless you have a specific reason."
+    if ([string]::IsNullOrWhiteSpace($DockerImage)) {
+        throw "-DockerImage is required when -Mode docker is set."
+    }
+    $dockerCommand = Get-Command docker -ErrorAction SilentlyContinue
+    if ($null -eq $dockerCommand) {
+        throw "Docker mode requires the Docker CLI in PATH. Install Docker or use -Mode npx."
+    }
+    if ([string]::IsNullOrWhiteSpace($AuthToken) -and [string]::IsNullOrWhiteSpace($env:ADO_MCP_AUTH_TOKEN)) {
+        throw "Docker mode requires ADO_MCP_AUTH_TOKEN in the environment or -AuthToken <pat> to persist it."
+    }
+} else {
+    $DockerImage = ""
 }
 
 # Install launcher and config
 New-Item -ItemType Directory -Force -Path $adoHome | Out-Null
 Copy-Item -LiteralPath $launcherSource -Destination $launcherTarget -Force
 
+$existingConfigForDefaults = Read-JsonFile -Path $configTarget
+if ([string]::IsNullOrWhiteSpace($Project)) {
+    $Project = Get-StringValue -Object $existingConfigForDefaults -Name "project"
+}
+if ([string]::IsNullOrWhiteSpace($Team)) {
+    $Team = Get-StringValue -Object $existingConfigForDefaults -Name "team"
+}
+if ([string]::IsNullOrWhiteSpace($Project) -and $Host.Name -ne "Default Host") {
+    $Project = Read-Host "Default Azure DevOps project (optional; repo .ado-mcp.json overrides)"
+}
+if (-not [string]::IsNullOrWhiteSpace($Project) -and [string]::IsNullOrWhiteSpace($Team) -and $Host.Name -ne "Default Host") {
+    $Team = Read-Host "Default Azure DevOps team (optional; repo .ado-mcp.json overrides)"
+}
+
+$Organization = Get-NormalizedStringValue -Value $Organization
+$Authentication = Get-NormalizedStringValue -Value $Authentication
+$Project = Get-NormalizedStringValue -Value $Project
+$Team = Get-NormalizedStringValue -Value $Team
+$DockerImage = Get-NormalizedStringValue -Value $DockerImage
+$Domains = @($Domains | ForEach-Object { Get-NormalizedStringValue -Value ([string]$_) } | Where-Object { $null -ne $_ })
+
+$configChanged = $true
 if ((Test-Path -LiteralPath $configTarget) -and -not $Force) {
     $existingConfig  = Read-JsonFile -Path $configTarget
     $existingDocker  = Get-StringValue -Object $existingConfig -Name "dockerImage"
-    $incomingDocker  = if ([string]::IsNullOrWhiteSpace($DockerImage)) { $null } else { $DockerImage }
+    $incomingDocker  = $DockerImage
     $dockerMismatch  = ($existingDocker -ne $incomingDocker)
     $orgMismatch     = (Get-StringValue -Object $existingConfig -Name "organization") -ne $Organization
+    $projectMismatch = (Get-StringValue -Object $existingConfig -Name "project") -ne $Project
+    $teamMismatch    = (Get-StringValue -Object $existingConfig -Name "team") -ne $Team
 
-    if ($dockerMismatch -or $orgMismatch) {
+    if ($dockerMismatch -or $orgMismatch -or $projectMismatch -or $teamMismatch) {
         throw "Config already exists with different settings. Use -Force to overwrite: $configTarget"
     }
     Write-Host "MCP config already exists and matches - skipping (use -Force to replace): $configTarget"
+    $configChanged = $false
 } else {
     $configAuthentication = if ([string]::IsNullOrWhiteSpace($DockerImage)) { $Authentication } else { "envvar" }
     $config = [ordered]@{ organization = $Organization; authentication = $configAuthentication }
+    if (-not [string]::IsNullOrWhiteSpace($Project)) { $config.project = $Project }
+    if (-not [string]::IsNullOrWhiteSpace($Team)) { $config.team = $Team }
     if ($Domains.Count -gt 0) { $config.domains = $Domains }
     if (-not [string]::IsNullOrWhiteSpace($DockerImage)) { $config.dockerImage = $DockerImage }
     $config | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $configTarget -Encoding utf8
-    $mode = if ([string]::IsNullOrWhiteSpace($DockerImage)) { "npx (local)" } else { "Docker ($DockerImage)" }
-    Write-Host "Wrote MCP config [$mode]: $configTarget"
+    $modeLabel = if ([string]::IsNullOrWhiteSpace($DockerImage)) { "npx (local)" } else { "Docker ($DockerImage)" }
+    Write-Host "Wrote MCP config [$modeLabel]: $configTarget"
+}
+
+if ($configChanged -or $Force) {
+    Install-GlobalMcpIfMissing
+} elseif ($Mode -eq "npx") {
+    Write-Host "Global @azure-devops/mcp install check skipped because MCP config already matches. Use -Force to retry."
 }
 
 if (-not [string]::IsNullOrWhiteSpace($DockerImage) -and -not [string]::IsNullOrWhiteSpace($AuthToken)) {
@@ -355,34 +711,30 @@ if ($configureVSCodeNow) {
 
     $vsCodeMcpPath      = Join-Path $env:APPDATA "Code\User\mcp.json"
     $vsCodeSettingsPath = Join-Path $env:APPDATA "Code\User\settings.json"
+    $legacyPromptDir    = Join-Path $adoHome "prompts"
 
     Set-Content -LiteralPath $copilotTarget -Value $copilotContextFile -Encoding utf8
-    New-Item -ItemType Directory -Force -Path $promptDir | Out-Null
-    Get-ChildItem -LiteralPath $promptSourceDir -Filter "*.prompt.md" | ForEach-Object {
-        Copy-Item -LiteralPath $_.FullName -Destination (Join-Path $promptDir $_.Name) -Force
-    }
 
     Merge-VSCodeMcpServer -Path $vsCodeMcpPath -LauncherPath $launcherTarget
     Merge-VSCodeCopilotInstructions -SettingsPath $vsCodeSettingsPath -ContextFilePath $copilotTarget
-    Merge-VSCodePromptFileLocation -SettingsPath $vsCodeSettingsPath -PromptDirectory $promptDir
+    Remove-LegacyVSCodePromptFiles -SettingsPath $vsCodeSettingsPath -PromptDirectory $legacyPromptDir
 }
 
 # -- Claude Code ----------------------------------------------------------------
-$claudeMcpRegistered = $false
 $claudePluginInstalled = $false
 if ($configureClaudeNow) {
     Write-Host "Configuring Claude Code..."
 
     $claude = Get-Command "claude" -ErrorAction SilentlyContinue
     if ($null -eq $claude) {
-        Write-Host "  Claude CLI not found. MCP and plugin were NOT registered. Run manually after installing Claude Code:"
-        Write-Host "  claude mcp add --scope user azure-devops -- powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$launcherTarget`""
+        Write-Host "  Claude CLI not found. Plugin was NOT registered. Run manually after installing Claude Code:"
         Write-Host "  claude plugin marketplace add --scope user `"$repoRoot`""
         Write-Host "  claude plugin install --scope user azure-devops-agents-claude@azure-devops-agents"
     } else {
-        & claude mcp add --scope user azure-devops -- powershell.exe -NoProfile -ExecutionPolicy Bypass -File $launcherTarget
-        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-        $claudeMcpRegistered = $true
+        Remove-ClaudeUserMcpServer `
+            -SuccessMessage "  Removed legacy standalone MCP server registrations." `
+            -NotFoundMessage "  Legacy standalone MCP servers not registered, continuing." `
+            -FailureMessage "Could not remove legacy standalone MCP server registrations."
 
         $marketplaceList = (& claude plugin marketplace list 2>&1) -join "`n"
         if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
@@ -409,26 +761,25 @@ if ($configureClaudeNow) {
     # Global CLAUDE.md - written regardless of whether claude CLI was found
     $claudeContextPath = Join-Path $userHome ".claude\CLAUDE.md"
     Merge-MarkdownBlock -Path $claudeContextPath -MarkerName "azure-devops-agents" -Content $claudeContextBlock
+
+    $claudeSettingsPath = Join-Path $userHome ".claude\settings.json"
+    Enable-PluginMcpJsonServer -SettingsPath $claudeSettingsPath -ServerName "azure-devops"
 }
 
 Write-Host ""
-Write-Host "Done. Per-tool summary:"
+Write-Host "Done. Client summary:"
 if ($configureClaudeNow) {
-    if ($claudeMcpRegistered) {
-        if ($claudePluginInstalled) {
-            Write-Host "  Claude Code : MCP registered + plugin installed + ~/.claude/CLAUDE.md updated"
-        } else {
-            Write-Host "  Claude Code : MCP registered + ~/.claude/CLAUDE.md updated"
-        }
+    if ($claudePluginInstalled) {
+        Write-Host "  Claude Code : plugin installed + plugin MCP enabled + ~/.claude/CLAUDE.md updated"
     } else {
-        Write-Host "  Claude Code : ~/.claude/CLAUDE.md updated (MCP/plugin pending - run manual commands above)"
+        Write-Host "  Claude Code : ~/.claude/CLAUDE.md updated (plugin install pending - run manual commands above)"
     }
 }
 if ($configureCodexNow) {
     Write-Host "  Codex       : MCP registered + ~/.codex/AGENTS.md updated"
 }
 if ($configureVSCodeNow) {
-    Write-Host "  VS Code     : MCP registered + Copilot instruction + prompt files added"
+    Write-Host "  VS Code     : MCP registered + Copilot instruction added"
 }
 Write-Host ""
 if (-not [string]::IsNullOrWhiteSpace($DockerImage)) {
@@ -439,4 +790,4 @@ if (-not [string]::IsNullOrWhiteSpace($DockerImage)) {
     Write-Host "Service principal: set AZURE_CLIENT_ID, AZURE_CLIENT_SECRET, AZURE_TENANT_ID, then restart all tools."
 }
 Write-Host "Per-repo config  : add .ado-mcp.json -> { ""project"": ""YourProject"", ""team"": ""YourTeam"" }"
-
+Write-Host "Project default  : stored in ~/.ado-mcp/config.json; repo .ado-mcp.json overrides it when present."

@@ -1,55 +1,80 @@
 ---
 name: azure-devops-planning
-description: Use when planning Azure DevOps Epics, Features, User Stories, acceptance criteria, estimates, sprint placement, or ADRs through the Azure DevOps MCP server.
+description: Use when the user wants to plan, setup, build, design, define, implement, secure, expose, document, diagram, estimate, schedule, or break down a software, platform, infrastructure, DevOps, security, UX, or technical documentation initiative that should become RUP-style Azure DevOps artifacts.
 ---
 
-# Azure DevOps Planning
+# Azure DevOps RUP Planning
 
-Use this skill when the user expresses planning intent for Azure DevOps work.
+Use this skill when the user expresses planning intent for software, platform, infrastructure, DevOps, security, UX, or documentation work. The user does not need to mention Azure DevOps, RUP, or a route name.
 
-## MCP Server
+Treat natural language intent as a planning trigger when it starts or implies work such as "I want to", "we need to", "we should", "let's", "setup", "build", "design", "create", "define", "implement", "secure", "expose", "integrate", "document", "diagram", "estimate", or "break down".
 
-Use the `azure-devops` MCP server backed by Microsoft's official `@azure-devops/mcp` package.
-Tool names use the `mcp_ado_*` naming pattern.
+Examples that should trigger:
 
-The MCP launcher reads `.ado-mcp.json` from the repository root and injects the Azure DevOps project and team at runtime:
+- "I want to setup a highly secure home lab exposed through Cloudflare Tunnel."
+- "We need to build certificate rotation."
+- "Design the UX for self-service password reset."
+- "Document the architecture with UML diagrams."
+- "Break this feature into tasks."
 
-```json
-{ "project": "YourProject", "team": "YourTeam" }
-```
+If the request is not already phrased in RUP terms, map it to the closest canonical concept before planning. Ask a clarifying question only when the target concept or scope is genuinely ambiguous.
 
-## Planning Routes
+## Canonical Model
 
-Use these routes for planning requests:
+Plan in RUP-style SDLC language:
 
-| Signal | Route | Agents |
-|--------|-------|--------|
-| Broad initiative, multiple features, or Epic | `/plan-epic` | ba-agent -> sa-agent -> architect-agent -> pm-agent |
-| Specific capability or Feature | `/plan-feature` | ba-agent -> sa-agent -> architect-agent -> pm-agent |
-| Single behavior or User Story | `/plan-story` | ba-agent -> sa-agent -> pm-agent |
-| Ambiguous scope | Ask first | "Are we planning an Epic, a Feature, or a User Story?" |
+- Stakeholder Request
+- Functional Requirement
+- Non-Functional Requirement
+- UX Artifact
+- Technical Requirement
+- Architecture
+- Technical Documentation
+- Delivery Slice
+- Task
 
-Trigger phrases include "we need to", "we should", "let's", "I want to", "plan", "design", "build", "create", "define", and "implement".
+Map to Azure DevOps process terms only after retrieving and validating the target process metadata with `mcp_ado_wit_list_backlogs` and `mcp_ado_wit_get_work_item_type`.
 
-Do not trigger the planning pipeline for lookup-only questions such as "what is in sprint 3?" or "show me story #42".
+## Routes
 
-Pause for user confirmation after each agent phase before proceeding.
+Preferred:
 
-## Tooling Rules
+- `/capture-request`
+- `/define-requirements`
+- `/design-ux`
+- `/plan-requirement`
+- `/document-solution`
+- `/plan-delivery`
+- `/plan-task`
 
-Create child work items with `mcp_ado_wit_add_child_work_items`.
-Use it only for title, description, area path, iteration path, format, and parent link.
+## Workflow
 
-Add fields such as Acceptance Criteria, Story Points, and Tags afterward with `mcp_ado_wit_update_work_item`.
+Run the SDLC role sequence in order, but stop at the last phase the request needs. For each phase, produce only that phase's output and pause before continuing.
 
-After creating any work item, read it back with `mcp_ado_wit_get_work_item`.
-If the parent link is missing, repair it with `mcp_ado_wit_work_items_link`.
+1. Stakeholder Analyst
+2. Requirements Analyst
+3. UX Designer, when user-facing behavior is in scope
+4. Solution Architect, with cohesive architecture views and ADR candidates
+5. Technical Writer, with traceable docs and Azure DevOps wiki-safe Mermaid diagrams
+6. Delivery Planner
+7. Implementation Lead, when tasks are needed
 
-Read ADR content with this wiki sequence:
+Pause after each phase. Never create Azure DevOps work items until the user confirms the final plan.
 
-1. `mcp_ado_wiki_list_wikis`
-2. `mcp_ado_wiki_list_pages`
-3. `mcp_ado_wiki_get_page`
-4. `mcp_ado_wiki_get_page_content`
+## Development Readiness Gate
 
-`mcp_ado_wiki_get_page` returns metadata. `mcp_ado_wiki_get_page_content` returns the page text.
+If the user asks to build, implement, change, fix, configure, deploy, secure, expose, integrate, document, diagram, or otherwise produce project work, first verify that the request is traceable to an existing approved Azure DevOps work item or confirmed RUP planning artifact.
+
+If the work is not already represented in Azure DevOps, do not start development. Trigger planning by capturing the request as a new Stakeholder Request or Change Request, then run the SDLC phases until ready. Development can start only after requirements, UX for user-facing work, architecture, technical documentation, delivery planning, and needed implementation tasks are confirmed.
+
+## Architecture And Diagram Quality
+
+Architecture is not a technology list. It must define the system boundary, actors, components, runtime flows, deployment, data, security, operations, decisions, tradeoffs, and open questions. Every technology choice must be confirmed or listed as an ADR candidate.
+
+Technical documentation must not introduce architecture decisions. Mermaid diagrams for Azure DevOps wiki must use `::: mermaid` blocks, `graph TD;` or `graph LR;` for flowcharts, simple node IDs, quoted ASCII labels, no HTML, no Markdown labels, no angle-bracket placeholders, no raw Unicode symbols, and no GitHub-style Mermaid code fences.
+
+## Tooling
+
+Use the official `azure-devops` MCP server and `mcp_ado_*` tool names.
+
+Before writing, call `mcp_ado_wit_list_backlogs` and `mcp_ado_wit_get_work_item_type` to build the process profile. Create with `mcp_ado_wit_add_child_work_items`, update only discovered fields with `mcp_ado_wit_update_work_item`, and verify links with `mcp_ado_wit_get_work_item`.
