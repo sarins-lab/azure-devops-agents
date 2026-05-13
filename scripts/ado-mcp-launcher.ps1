@@ -199,6 +199,10 @@ $mcpBin = Get-Command mcp-server-azuredevops -ErrorAction SilentlyContinue
 if ($mcpBin) {
     & mcp-server-azuredevops @binArgs
 } else {
+    $npxBin = Get-Command npx -ErrorAction SilentlyContinue
+    if ($null -eq $npxBin) {
+        throw "Azure DevOps MCP launcher requires either a global mcp-server-azuredevops binary or npx in PATH. Install npm with Node.js 20+ or install @azure-devops/mcp globally."
+    }
     & npx -y "@azure-devops/mcp" @binArgs
 }
 exit $LASTEXITCODE

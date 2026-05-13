@@ -152,7 +152,7 @@ if (!text.includes(start)) {
 }
 const escapedStart = start.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const escapedEnd   = end.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-text = text.replace(new RegExp(`\\n?${escapedStart}[\\s\\S]*?${escapedEnd}\\n?`), "\n");
+text = text.replace(new RegExp(`\\n?${escapedStart}[\\s\\S]*?${escapedEnd}\\n?`, "g"), "\n");
 const trimmed = text.replace(/\n{3,}/g, "\n\n").trimEnd();
 text = trimmed !== "" ? trimmed + "\n" : "";
 fs.writeFileSync(path, text, "utf8");
