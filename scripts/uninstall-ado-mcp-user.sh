@@ -154,7 +154,7 @@ remove_claude_user_mcp_server() {
   if ! list_output="$(claude mcp list 2>&1)"; then
     printf '%s\n' "$list_output" >&2
     echo "  WARN: could not remove standalone Claude MCP server registrations." >&2
-    return 1
+    return 0
   fi
 
   while IFS= read -r line; do
@@ -178,7 +178,7 @@ remove_claude_user_mcp_server() {
 
   if (( failed != 0 )); then
     echo "  WARN: could not remove standalone Claude MCP server registrations." >&2
-    return 1
+    return 0
   fi
 
   if (( removed != 0 )); then
@@ -186,6 +186,8 @@ remove_claude_user_mcp_server() {
   else
     echo "  Standalone Claude MCP servers not registered, skipping."
   fi
+
+  return 0
 }
 
 vscode_user_dir() {
@@ -277,7 +279,13 @@ if [[ $configure_vscode -eq 1 ]]; then
       node - "$mcp_path" <<'NODE'
 const fs = require("fs");
 const path = process.argv[2];
-const mcp = JSON.parse(fs.readFileSync(path, "utf8"));
+let mcp;
+try {
+  mcp = JSON.parse(fs.readFileSync(path, "utf8"));
+} catch (err) {
+  console.error(`  WARN: Could not parse ${path} — skipping MCP update. Remove azure-devops entry manually. (${err.message})`);
+  process.exit(0);
+}
 if (mcp.servers && mcp.servers["azure-devops"]) {
   delete mcp.servers["azure-devops"];
   fs.writeFileSync(path, JSON.stringify(mcp, null, 2) + "\n", "utf8");

@@ -514,7 +514,7 @@ remove_claude_user_mcp_server() {
   if ! list_output="$(claude mcp list 2>&1)"; then
     printf '%s\n' "$list_output" >&2
     echo "$failure_message" >&2
-    return 1
+    return 0
   fi
 
   while IFS= read -r line; do
@@ -538,7 +538,7 @@ remove_claude_user_mcp_server() {
 
   if (( failed != 0 )); then
     echo "$failure_message" >&2
-    return 1
+    return 0
   fi
 
   if (( removed != 0 )); then
@@ -546,6 +546,8 @@ remove_claude_user_mcp_server() {
   else
     echo "$not_found_message"
   fi
+
+  return 0
 }
 
 mkdir -p "$ado_home"
