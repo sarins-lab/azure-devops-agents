@@ -213,8 +213,9 @@ function Assert-NodeAndNpxAvailable {
     }
 
     $npxCommand = Get-Command npx -ErrorAction SilentlyContinue
-    if ($null -eq $npxCommand) {
-        throw "npx is required for non-Docker MCP mode. Install npm with Node.js 20+ or rerun with -DockerImage <image>."
+    $mcpCommand = Get-Command mcp-server-azuredevops -ErrorAction SilentlyContinue
+    if ($null -eq $npxCommand -and $null -eq $mcpCommand) {
+        throw "Non-Docker MCP mode requires either a global mcp-server-azuredevops binary or npx in PATH. Install npm with Node.js 20+ or install @azure-devops/mcp globally."
     }
 }
 

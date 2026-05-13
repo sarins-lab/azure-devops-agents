@@ -201,8 +201,10 @@ require_node() {
     exit 1
   fi
 
-  if [[ -z "$docker_image" ]] && ! command -v npx >/dev/null 2>&1; then
-    echo "npx is required for non-Docker MCP mode. Install npm with Node.js 20+ or rerun with --docker-image <image>." >&2
+  if [[ -z "$docker_image" ]] && \
+     ! command -v mcp-server-azuredevops >/dev/null 2>&1 && \
+     ! command -v npx >/dev/null 2>&1; then
+    echo "Non-Docker MCP mode requires either a global mcp-server-azuredevops binary or npx. Install npm with Node.js 20+ or install @azure-devops/mcp globally." >&2
     exit 1
   fi
 }
@@ -689,6 +691,11 @@ if [[ -n "$docker_image" ]]; then
   docker_args+=("$docker_image")
 
   exec docker "${docker_args[@]}"
+fi
+
+if ! command -v mcp-server-azuredevops >/dev/null 2>&1 && ! command -v npx >/dev/null 2>&1; then
+  echo "Azure DevOps MCP launcher requires either a global mcp-server-azuredevops binary or npx in PATH. Install npm with Node.js 20+ or install @azure-devops/mcp globally." >&2
+  exit 1
 fi
 
 if [[ "$authentication" == "azcli" ]]; then
