@@ -26,7 +26,8 @@ $ErrorActionPreference = "Stop"
 function Read-JsonFile {
     param(
         [Parameter(Mandatory = $true)]
-        [string]$Path
+        [string]$Path,
+        [switch]$AllowJsonC
     )
 
     if (-not (Test-Path -LiteralPath $Path)) {
@@ -38,7 +39,136 @@ function Read-JsonFile {
         return $null
     }
 
+    if ($AllowJsonC) {
+        return ConvertFrom-JsonOrJsonC -Content $content -Path $Path
+    }
+
     return $content | ConvertFrom-Json
+}
+
+function Remove-JsonCommentsAndTrailingCommas {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Content
+    )
+
+    $withoutComments = [System.Text.StringBuilder]::new()
+    $inString = $false
+    $escaped = $false
+    $inLineComment = $false
+    $inBlockComment = $false
+
+    for ($index = 0; $index -lt $Content.Length; $index++) {
+        $ch = $Content[$index]
+        $next = if ($index + 1 -lt $Content.Length) { $Content[$index + 1] } else { [char]0 }
+
+        if ($inLineComment) {
+            if ($ch -eq "`n" -or $ch -eq "`r") {
+                $inLineComment = $false
+                [void]$withoutComments.Append($ch)
+            }
+            continue
+        }
+
+        if ($inBlockComment) {
+            if ($ch -eq '*' -and $next -eq '/') {
+                $inBlockComment = $false
+                $index++
+            }
+            continue
+        }
+
+        if ($inString) {
+            [void]$withoutComments.Append($ch)
+            if ($escaped) {
+                $escaped = $false
+            } elseif ($ch -eq '\\') {
+                $escaped = $true
+            } elseif ($ch -eq '"') {
+                $inString = $false
+            }
+            continue
+        }
+
+        if ($ch -eq '"') {
+            $inString = $true
+            [void]$withoutComments.Append($ch)
+            continue
+        }
+
+        if ($ch -eq '/' -and $next -eq '/') {
+            $inLineComment = $true
+            $index++
+            continue
+        }
+
+        if ($ch -eq '/' -and $next -eq '*') {
+            $inBlockComment = $true
+            $index++
+            continue
+        }
+
+        [void]$withoutComments.Append($ch)
+    }
+
+    $cleaned = $withoutComments.ToString()
+    $withoutTrailingCommas = [System.Text.StringBuilder]::new()
+    $inString = $false
+    $escaped = $false
+
+    for ($index = 0; $index -lt $cleaned.Length; $index++) {
+        $ch = $cleaned[$index]
+
+        if ($inString) {
+            [void]$withoutTrailingCommas.Append($ch)
+            if ($escaped) {
+                $escaped = $false
+            } elseif ($ch -eq '\\') {
+                $escaped = $true
+            } elseif ($ch -eq '"') {
+                $inString = $false
+            }
+            continue
+        }
+
+        if ($ch -eq '"') {
+            $inString = $true
+            [void]$withoutTrailingCommas.Append($ch)
+            continue
+        }
+
+        if ($ch -eq ',') {
+            $j = $index + 1
+            while ($j -lt $cleaned.Length -and [char]::IsWhiteSpace($cleaned[$j])) {
+                $j++
+            }
+
+            if ($j -lt $cleaned.Length -and ($cleaned[$j] -eq '}' -or $cleaned[$j] -eq ']')) {
+                continue
+            }
+        }
+
+        [void]$withoutTrailingCommas.Append($ch)
+    }
+
+    return $withoutTrailingCommas.ToString()
+}
+
+function ConvertFrom-JsonOrJsonC {
+    param(
+        [string]$Content,
+        [string]$Path
+    )
+
+    try {
+        return $Content | ConvertFrom-Json
+    } catch {
+        try {
+            return (Remove-JsonCommentsAndTrailingCommas -Content $Content) | ConvertFrom-Json
+        } catch {
+            throw "Unable to parse JSON/JSONC file '$Path'. Remove invalid comments or trailing commas, then rerun the installer. $($_.Exception.Message)"
+        }
+    }
 }
 
 function Read-TextFile {
@@ -313,8 +443,15 @@ function Merge-VSCodeCopilotInstructions {
     New-Item -ItemType Directory -Force -Path $parent | Out-Null
 
     if (Test-Path -LiteralPath $SettingsPath) {
-        $raw  = Get-Content -LiteralPath $SettingsPath -Raw
-        $json = if ([string]::IsNullOrWhiteSpace($raw)) { [pscustomobject]@{} } else { $raw | ConvertFrom-Json }
+        try {
+            $json = Read-JsonFile -Path $SettingsPath -AllowJsonC
+            if ($null -eq $json) {
+                $json = [pscustomobject]@{}
+            }
+        } catch {
+            Write-Warning "Could not parse $SettingsPath - skipping Copilot instruction update. $($_.Exception.Message)"
+            return
+        }
     } else {
         $json = [pscustomobject]@{}
     }
@@ -347,9 +484,14 @@ function Remove-LegacyVSCodePromptFiles {
     param([string]$SettingsPath, [string]$PromptDirectory)
 
     if (Test-Path -LiteralPath $SettingsPath) {
-        $raw = Get-Content -LiteralPath $SettingsPath -Raw
-        if (-not [string]::IsNullOrWhiteSpace($raw)) {
-            $json = $raw | ConvertFrom-Json
+        try {
+            $json = Read-JsonFile -Path $SettingsPath -AllowJsonC
+        } catch {
+            Write-Warning "Could not parse $SettingsPath - skipping legacy prompt cleanup in settings. $($_.Exception.Message)"
+            $json = $null
+        }
+
+        if ($null -ne $json) {
             $key = "chat.promptFilesLocations"
             $prop = $json.PSObject.Properties[$key]
             $changed = $false
@@ -442,6 +584,7 @@ if (-not [string]::IsNullOrWhiteSpace($Project) -and [string]::IsNullOrWhiteSpac
     $Team = Read-Host "Default Azure DevOps team (optional; repo .ado-mcp.json overrides)"
 }
 
+$configUpdated = $false
 if ((Test-Path -LiteralPath $configTarget) -and -not $Force) {
     $existingConfig  = Read-JsonFile -Path $configTarget
     $existingDocker  = Get-StringValue -Object $existingConfig -Name "dockerImage"
@@ -465,9 +608,12 @@ if ((Test-Path -LiteralPath $configTarget) -and -not $Force) {
     $config | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $configTarget -Encoding utf8
     $modeLabel = if ([string]::IsNullOrWhiteSpace($DockerImage)) { "npx (local)" } else { "Docker ($DockerImage)" }
     Write-Host "Wrote MCP config [$modeLabel]: $configTarget"
+    $configUpdated = $true
 }
 
-Install-GlobalMcpIfMissing
+if ($configUpdated) {
+    Install-GlobalMcpIfMissing
+}
 
 if (-not [string]::IsNullOrWhiteSpace($DockerImage) -and -not [string]::IsNullOrWhiteSpace($AuthToken)) {
     [Environment]::SetEnvironmentVariable("ADO_MCP_AUTH_TOKEN", $AuthToken, "User")

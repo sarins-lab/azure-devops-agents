@@ -33,6 +33,7 @@ jobs:
 
       - name: Check command frontmatter
         run: |
+          shopt -s nullglob
           fail=0
           for f in commands/*.md; do
             for field in "^description:" "^allowed-tools:"; do
@@ -46,6 +47,7 @@ jobs:
 
       - name: Check tool names exist in TOOLSET.md
         run: |
+          shopt -s nullglob
           fail=0
           for f in agents/*.md commands/*.md; do
             # Extract tool names from frontmatter (strip mcp__ prefix namespace, get the mcp_ado_* name)

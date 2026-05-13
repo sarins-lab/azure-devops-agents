@@ -325,6 +325,35 @@ function readJson(path) {
   const raw = fs.readFileSync(path, "utf8").trim();
   return raw ? JSON.parse(raw) : {};
 }
+function stripJsonc(text) {
+  let out = "", inStr = false, escaped = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i], next = text[i + 1];
+    if (escaped) { out += ch; escaped = false; continue; }
+    if (inStr && ch === "\\") { out += ch; escaped = true; continue; }
+    if (ch === '"') { inStr = !inStr; out += ch; continue; }
+    if (inStr) { out += ch; continue; }
+    if (ch === "/" && next === "/") { while (i < text.length && text[i] !== "\n") i++; continue; }
+    if (ch === "/" && next === "*") { i += 2; while (i < text.length && !(text[i] === "*" && text[i + 1] === "/")) i++; i++; continue; }
+    out += ch;
+  }
+  return out.replace(/,(\s*[}\]])/g, "$1");
+}
+function tryReadSettingsJson(path) {
+  if (!fs.existsSync(path)) return {};
+  const raw = fs.readFileSync(path, "utf8").trim();
+  if (!raw) return {};
+  try {
+    return JSON.parse(raw);
+  } catch (jsonError) {
+    try {
+      return JSON.parse(stripJsonc(raw));
+    } catch (jsoncError) {
+      console.error(`  WARN: Could not parse ${path} - skipping settings update. (${jsoncError.message})`);
+      return null;
+    }
+  }
+}
 function writeJson(path, value) {
   fs.mkdirSync(require("path").dirname(path), { recursive: true });
   fs.writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`, "utf8");
@@ -342,15 +371,24 @@ if (!mcp.servers["azure-devops"] || force) {
 } else {
   console.log(`  MCP entry already present. Use --force to replace: ${mcpPath}`);
 }
-const settings = readJson(settingsPath);
-const instructionKey = "github.copilot.chat.codeGeneration.instructions";
-const instructions = Array.isArray(settings[instructionKey]) ? settings[instructionKey] : [];
-if (!instructions.some((item) => item && item.file === contextPath)) {
-  instructions.push({ file: contextPath });
+const settings = tryReadSettingsJson(settingsPath);
+if (settings !== null) {
+  let settingsChanged = false;
+  const instructionKey = "github.copilot.chat.codeGeneration.instructions";
+  const instructions = Array.isArray(settings[instructionKey]) ? settings[instructionKey] : [];
+  const instructionPresent = instructions.some((item) => item && item.file === contextPath);
+  if (instructionPresent && !force) {
+    console.log(`  Copilot instruction already present. Use --force to update: ${settingsPath}`);
+  } else {
+    settings[instructionKey] = instructions.filter((item) => !(item && item.file === contextPath));
+    settings[instructionKey].push({ file: contextPath });
+    settingsChanged = true;
+  }
+  if (settingsChanged) {
+    writeJson(settingsPath, settings);
+    console.log(`  Updated VS Code settings: ${settingsPath}`);
+  }
 }
-settings[instructionKey] = instructions;
-writeJson(settingsPath, settings);
-console.log(`  Updated VS Code settings: ${settingsPath}`);
 NODE
 }
 
@@ -363,7 +401,27 @@ const [settingsPath, promptPath] = process.argv.slice(2);
 if (!fs.existsSync(settingsPath)) process.exit(0);
 const raw = fs.readFileSync(settingsPath, "utf8").trim();
 if (!raw) process.exit(0);
-const settings = JSON.parse(raw);
+function stripJsonc(text) {
+  let out = "", inStr = false, escaped = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i], next = text[i + 1];
+    if (escaped) { out += ch; escaped = false; continue; }
+    if (inStr && ch === "\\") { out += ch; escaped = true; continue; }
+    if (ch === '"') { inStr = !inStr; out += ch; continue; }
+    if (inStr) { out += ch; continue; }
+    if (ch === "/" && next === "/") { while (i < text.length && text[i] !== "\n") i++; continue; }
+    if (ch === "/" && next === "*") { i += 2; while (i < text.length && !(text[i] === "*" && text[i + 1] === "/")) i++; i++; continue; }
+    out += ch;
+  }
+  return out.replace(/,(\s*[}\]])/g, "$1");
+}
+let settings;
+try {
+  settings = JSON.parse(stripJsonc(raw));
+} catch (err) {
+  console.error(`  WARN: Could not parse ${settingsPath} - skipping prompt cleanup. (${err.message})`);
+  process.exit(0);
+}
 const key = "chat.promptFilesLocations";
 let changed = false;
 if (settings[key] && typeof settings[key] === "object" && !Array.isArray(settings[key]) && Object.prototype.hasOwnProperty.call(settings[key], promptPath)) {
@@ -519,6 +577,7 @@ if [[ -n "$project" && -z "$team" && -t 0 ]]; then
 fi
 
 incoming_docker="$docker_image"
+config_updated=0
 if [[ -f "$config_target" && $force -eq 0 && ( "$existing_docker" != "$incoming_docker" || "$existing_org" != "$organization" || "$existing_project" != "$project" || "$existing_team" != "$team" ) ]]; then
   echo "Config already exists with different settings. Use --force to overwrite: $config_target" >&2
   exit 1
@@ -543,8 +602,11 @@ if (dockerImage) config.dockerImage = dockerImage;
 fs.writeFileSync(path, `${JSON.stringify(config, null, 2)}\n`, "utf8");
 NODE
 echo "Wrote MCP config: $config_target"
+config_updated=1
 
-install_global_mcp_if_missing
+if [[ $config_updated -eq 1 ]]; then
+  install_global_mcp_if_missing
+fi
 
 if [[ -n "$docker_image" && -n "$auth_token" ]]; then
   printf 'export ADO_MCP_AUTH_TOKEN=%s\n' "$(shell_quote "$auth_token")" > "$env_target"
