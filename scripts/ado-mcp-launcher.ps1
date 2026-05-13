@@ -63,7 +63,7 @@ function Get-StringValue {
         return $null
     }
 
-    return $value
+    return $value.Trim()
 }
 
 function Assert-Node20Available {
@@ -93,6 +93,9 @@ $organization = Get-StringValue -Object $userConfig -Name "organization"
 if ([string]::IsNullOrWhiteSpace($organization)) {
     $organization = $env:ADO_MCP_ORG
 }
+if (-not [string]::IsNullOrWhiteSpace($organization)) {
+    $organization = $organization.Trim()
+}
 
 if ([string]::IsNullOrWhiteSpace($organization)) {
     throw "Azure DevOps organization is not configured. Set ADO_MCP_ORG or create $userConfigPath."
@@ -102,12 +105,16 @@ $authentication = Get-StringValue -Object $userConfig -Name "authentication"
 if ([string]::IsNullOrWhiteSpace($authentication)) {
     $authentication = "azcli"
 }
+$authentication = $authentication.Trim()
 
 $dockerImage = Get-StringValue -Object $userConfig -Name "dockerImage"
 
 $project = Get-StringValue -Object $userConfig -Name "project"
 if ([string]::IsNullOrWhiteSpace($project)) {
     $project = $env:ADO_MCP_PROJECT
+}
+if (-not [string]::IsNullOrWhiteSpace($project)) {
+    $project = $project.Trim()
 }
 $repoProject = Get-StringValue -Object $repoConfig -Name "project"
 if (-not [string]::IsNullOrWhiteSpace($repoProject)) {
@@ -120,6 +127,9 @@ if (-not [string]::IsNullOrWhiteSpace($project)) {
 $team = Get-StringValue -Object $userConfig -Name "team"
 if ([string]::IsNullOrWhiteSpace($team)) {
     $team = $env:ADO_MCP_TEAM
+}
+if (-not [string]::IsNullOrWhiteSpace($team)) {
+    $team = $team.Trim()
 }
 $repoTeam = Get-StringValue -Object $repoConfig -Name "team"
 if (-not [string]::IsNullOrWhiteSpace($repoTeam)) {

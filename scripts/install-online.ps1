@@ -339,7 +339,7 @@ function Get-StringValue {
         return $null
     }
 
-    return $value
+    return $value.Trim()
 }
 
 function Assert-Node20Available {
@@ -369,6 +369,9 @@ $organization = Get-StringValue -Object $userConfig -Name "organization"
 if ([string]::IsNullOrWhiteSpace($organization)) {
     $organization = $env:ADO_MCP_ORG
 }
+if (-not [string]::IsNullOrWhiteSpace($organization)) {
+    $organization = $organization.Trim()
+}
 
 if ([string]::IsNullOrWhiteSpace($organization)) {
     throw "Azure DevOps organization is not configured. Set ADO_MCP_ORG or create $userConfigPath."
@@ -378,12 +381,16 @@ $authentication = Get-StringValue -Object $userConfig -Name "authentication"
 if ([string]::IsNullOrWhiteSpace($authentication)) {
     $authentication = "azcli"
 }
+$authentication = $authentication.Trim()
 
 $dockerImage = Get-StringValue -Object $userConfig -Name "dockerImage"
 
 $project = Get-StringValue -Object $userConfig -Name "project"
 if ([string]::IsNullOrWhiteSpace($project)) {
     $project = $env:ADO_MCP_PROJECT
+}
+if (-not [string]::IsNullOrWhiteSpace($project)) {
+    $project = $project.Trim()
 }
 $repoProject = Get-StringValue -Object $repoConfig -Name "project"
 if (-not [string]::IsNullOrWhiteSpace($repoProject)) {
@@ -396,6 +403,9 @@ if (-not [string]::IsNullOrWhiteSpace($project)) {
 $team = Get-StringValue -Object $userConfig -Name "team"
 if ([string]::IsNullOrWhiteSpace($team)) {
     $team = $env:ADO_MCP_TEAM
+}
+if (-not [string]::IsNullOrWhiteSpace($team)) {
+    $team = $team.Trim()
 }
 $repoTeam = Get-StringValue -Object $repoConfig -Name "team"
 if (-not [string]::IsNullOrWhiteSpace($repoTeam)) {
@@ -628,7 +638,17 @@ function Get-StringValue {
         return $null
     }
 
-    return $value
+    return $value.Trim()
+}
+
+function Get-NormalizedStringValue {
+    param([AllowNull()][string]$Value)
+
+    if ([string]::IsNullOrWhiteSpace($Value)) {
+        return $null
+    }
+
+    return $Value.Trim()
 }
 
 function Get-McpServerJson {
@@ -849,15 +869,22 @@ if (-not [string]::IsNullOrWhiteSpace($Project) -and [string]::IsNullOrWhiteSpac
     $Team = Read-Host "Default Azure DevOps team (optional; repo .ado-mcp.json overrides)"
 }
 
+$Organization = Get-NormalizedStringValue -Value $Organization
+$Authentication = Get-NormalizedStringValue -Value $Authentication
+$Project = Get-NormalizedStringValue -Value $Project
+$Team = Get-NormalizedStringValue -Value $Team
+$DockerImage = Get-NormalizedStringValue -Value $DockerImage
+$Domains = @($Domains | ForEach-Object { Get-NormalizedStringValue -Value ([string]$_) } | Where-Object { $null -ne $_ })
+
 $configChanged = $true
 if ((Test-Path -LiteralPath $configTarget) -and -not $Force) {
     $existingConfig = Read-JsonFile -Path $configTarget
     $existingDocker = Get-StringValue -Object $existingConfig -Name "dockerImage"
-    $incomingDocker = if ([string]::IsNullOrWhiteSpace($DockerImage)) { $null } else { $DockerImage }
+    $incomingDocker = $DockerImage
     $dockerMismatch = ($existingDocker -ne $incomingDocker)
     $orgMismatch = (Get-StringValue -Object $existingConfig -Name "organization") -ne $Organization
-    $projectMismatch = (Get-StringValue -Object $existingConfig -Name "project") -ne $(if ([string]::IsNullOrWhiteSpace($Project)) { $null } else { $Project })
-    $teamMismatch = (Get-StringValue -Object $existingConfig -Name "team") -ne $(if ([string]::IsNullOrWhiteSpace($Team)) { $null } else { $Team })
+    $projectMismatch = (Get-StringValue -Object $existingConfig -Name "project") -ne $Project
+    $teamMismatch = (Get-StringValue -Object $existingConfig -Name "team") -ne $Team
 
     if ($dockerMismatch -or $orgMismatch -or $projectMismatch -or $teamMismatch) {
         throw "Config already exists with different settings. Use -Force to overwrite: $configTarget"

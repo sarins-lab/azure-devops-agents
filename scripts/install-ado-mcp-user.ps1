@@ -229,7 +229,17 @@ function Get-StringValue {
         return $null
     }
 
-    return $value
+    return $value.Trim()
+}
+
+function Get-NormalizedStringValue {
+    param([AllowNull()][string]$Value)
+
+    if ([string]::IsNullOrWhiteSpace($Value)) {
+        return $null
+    }
+
+    return $Value.Trim()
 }
 
 function ConvertTo-TomlString {
@@ -613,15 +623,22 @@ if (-not [string]::IsNullOrWhiteSpace($Project) -and [string]::IsNullOrWhiteSpac
     $Team = Read-Host "Default Azure DevOps team (optional; repo .ado-mcp.json overrides)"
 }
 
+$Organization = Get-NormalizedStringValue -Value $Organization
+$Authentication = Get-NormalizedStringValue -Value $Authentication
+$Project = Get-NormalizedStringValue -Value $Project
+$Team = Get-NormalizedStringValue -Value $Team
+$DockerImage = Get-NormalizedStringValue -Value $DockerImage
+$Domains = @($Domains | ForEach-Object { Get-NormalizedStringValue -Value ([string]$_) } | Where-Object { $null -ne $_ })
+
 $configChanged = $true
 if ((Test-Path -LiteralPath $configTarget) -and -not $Force) {
     $existingConfig  = Read-JsonFile -Path $configTarget
     $existingDocker  = Get-StringValue -Object $existingConfig -Name "dockerImage"
-    $incomingDocker  = if ([string]::IsNullOrWhiteSpace($DockerImage)) { $null } else { $DockerImage }
+    $incomingDocker  = $DockerImage
     $dockerMismatch  = ($existingDocker -ne $incomingDocker)
     $orgMismatch     = (Get-StringValue -Object $existingConfig -Name "organization") -ne $Organization
-    $projectMismatch = (Get-StringValue -Object $existingConfig -Name "project") -ne $(if ([string]::IsNullOrWhiteSpace($Project)) { $null } else { $Project })
-    $teamMismatch    = (Get-StringValue -Object $existingConfig -Name "team") -ne $(if ([string]::IsNullOrWhiteSpace($Team)) { $null } else { $Team })
+    $projectMismatch = (Get-StringValue -Object $existingConfig -Name "project") -ne $Project
+    $teamMismatch    = (Get-StringValue -Object $existingConfig -Name "team") -ne $Team
 
     if ($dockerMismatch -or $orgMismatch -or $projectMismatch -or $teamMismatch) {
         throw "Config already exists with different settings. Use -Force to overwrite: $configTarget"
