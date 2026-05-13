@@ -145,6 +145,27 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+# Fall back to an existing ~/.ado-mcp/config.json so re-installs work without args.
+_ado_existing_config="${ADO_MCP_HOME:-$HOME}/.ado-mcp/config.json"
+if [[ -f "$_ado_existing_config" ]] && command -v node >/dev/null 2>&1; then
+  _ado_cfg_get() {
+    node -e '
+const fs = require("fs");
+const d = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+const v = d[process.argv[2]];
+if (v !== undefined && v !== null) {
+  console.log(Array.isArray(v) ? v.join(",") : String(v));
+}
+' "$_ado_existing_config" "$1" 2>/dev/null || true
+  }
+  [[ -z "$organization" ]] && organization="$(_ado_cfg_get organization)"
+  [[ -z "$project" ]]      && project="$(_ado_cfg_get project)"
+  [[ -z "$team" ]]         && team="$(_ado_cfg_get team)"
+  [[ -z "$docker_image" ]] && docker_image="$(_ado_cfg_get dockerImage)"
+  unset -f _ado_cfg_get
+fi
+unset _ado_existing_config
+
 if [[ -z "$organization" ]]; then
   echo "Azure DevOps organization is required. Pass --organization <org> or set ADO_MCP_ORG." >&2
   usage >&2
