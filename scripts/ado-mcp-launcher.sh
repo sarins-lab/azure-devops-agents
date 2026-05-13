@@ -54,6 +54,31 @@ restore_interactive_shell_path() {
 
 restore_interactive_shell_path
 
+require_node() {
+  if ! command -v node >/dev/null 2>&1; then
+    echo "Node.js 20 or later is required to load Azure DevOps MCP configuration. Install Node.js and retry." >&2
+    exit 1
+  fi
+
+  local node_major
+  node_major="$(node -p 'Number(process.versions.node.split(".")[0])' 2>/dev/null || true)"
+  if ! [[ "$node_major" =~ ^[0-9]+$ ]] || (( node_major < 20 )); then
+    echo "Node.js 20 or later is required; found $(node --version 2>/dev/null || echo unknown)." >&2
+    exit 1
+  fi
+}
+
+require_local_runner() {
+  if command -v mcp-server-azuredevops >/dev/null 2>&1 || command -v npx >/dev/null 2>&1; then
+    return 0
+  fi
+
+  echo "Azure DevOps MCP launcher requires either a global mcp-server-azuredevops binary or npx in PATH. Install npm with Node.js 20+ or install @azure-devops/mcp globally." >&2
+  exit 1
+}
+
+require_node
+
 load_config() {
   local file="$1"
   local prefix="$2"
@@ -145,6 +170,10 @@ fi
 
 authentication="${user_config_authentication:-azcli}"
 docker_image="${user_config_docker_image:-}"
+
+if [[ -z "$docker_image" ]]; then
+  require_local_runner
+fi
 
 project="${user_config_project:-${ADO_MCP_PROJECT:-}}"
 team="${user_config_team:-${ADO_MCP_TEAM:-}}"

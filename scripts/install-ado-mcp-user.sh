@@ -52,6 +52,27 @@ restore_interactive_shell_path() {
 
 restore_interactive_shell_path
 
+require_node() {
+  if ! command -v node >/dev/null 2>&1; then
+    echo "Node.js 20 or later is required. Install Node.js and retry." >&2
+    exit 1
+  fi
+
+  local node_major
+  node_major="$(node -p 'Number(process.versions.node.split(".")[0])' 2>/dev/null || true)"
+  if ! [[ "$node_major" =~ ^[0-9]+$ ]] || (( node_major < 20 )); then
+    echo "Node.js 20 or later is required; found $(node --version 2>/dev/null || echo unknown)." >&2
+    exit 1
+  fi
+
+  if [[ "$mode" == "npx" ]] && \
+     ! command -v mcp-server-azuredevops >/dev/null 2>&1 && \
+     ! command -v npx >/dev/null 2>&1; then
+    echo "Non-Docker MCP mode requires either a global mcp-server-azuredevops binary or npx. Install npm with Node.js 20+ or rerun with --mode docker." >&2
+    exit 1
+  fi
+}
+
 organization=""
 authentication="azcli"
 domains_csv="core,work,work-items,repositories,wiki"
@@ -168,6 +189,8 @@ case "$mode" in
     exit 1
     ;;
 esac
+
+require_node
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 repo_root="$(cd "$script_dir/.." && pwd -P)"
