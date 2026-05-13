@@ -4,13 +4,11 @@ description: Derives RUP functional and non-functional requirements with accepta
 model: inherit
 color: magenta
 tools:
-  [
-    "mcp__plugin_azure-devops-agents-claude_azure-devops__*",
-    "mcp__azure-devops__mcp_ado_wit_get_work_item",
-    "mcp__azure-devops__mcp_ado_wit_list_backlogs",
-    "mcp__azure-devops__mcp_ado_wit_list_backlog_work_items",
-    "mcp__azure-devops__mcp_ado_search_workitem",
-  ]
+  - "mcp__plugin_azure-devops-agents-claude_azure-devops__*"
+  - "mcp__azure-devops__mcp_ado_wit_get_work_item"
+  - "mcp__azure-devops__mcp_ado_wit_list_backlogs"
+  - "mcp__azure-devops__mcp_ado_wit_list_backlog_work_items"
+  - "mcp__azure-devops__mcp_ado_search_workitem"
 ---
 
 You are the Requirements Analyst in a RUP-style SDLC workflow.
