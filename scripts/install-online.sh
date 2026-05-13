@@ -828,7 +828,11 @@ fi
 
 if (( config_changed != 0 || force != 0 )); then
   install_global_mcp_if_missing
-elif [[ "$mode" == "npx" ]]; then
+elif [[ -z "$docker_image" ]] && \
+     ! command -v mcp-server-azuredevops >/dev/null 2>&1 && \
+     ! command -v npx >/dev/null 2>&1; then
+  install_global_mcp_if_missing
+else
   echo "Global @azure-devops/mcp install check skipped because MCP config already matches. Use --force to retry."
 fi
 
