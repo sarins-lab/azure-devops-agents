@@ -584,7 +584,6 @@ if (-not [string]::IsNullOrWhiteSpace($Project) -and [string]::IsNullOrWhiteSpac
     $Team = Read-Host "Default Azure DevOps team (optional; repo .ado-mcp.json overrides)"
 }
 
-$configUpdated = $false
 if ((Test-Path -LiteralPath $configTarget) -and -not $Force) {
     $existingConfig  = Read-JsonFile -Path $configTarget
     $existingDocker  = Get-StringValue -Object $existingConfig -Name "dockerImage"
@@ -608,12 +607,9 @@ if ((Test-Path -LiteralPath $configTarget) -and -not $Force) {
     $config | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $configTarget -Encoding utf8
     $modeLabel = if ([string]::IsNullOrWhiteSpace($DockerImage)) { "npx (local)" } else { "Docker ($DockerImage)" }
     Write-Host "Wrote MCP config [$modeLabel]: $configTarget"
-    $configUpdated = $true
 }
 
-if ($configUpdated) {
-    Install-GlobalMcpIfMissing
-}
+Install-GlobalMcpIfMissing
 
 if (-not [string]::IsNullOrWhiteSpace($DockerImage) -and -not [string]::IsNullOrWhiteSpace($AuthToken)) {
     [Environment]::SetEnvironmentVariable("ADO_MCP_AUTH_TOKEN", $AuthToken, "User")
