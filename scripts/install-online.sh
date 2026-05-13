@@ -89,15 +89,15 @@ json_get() {
   local key="$2"
   node -e '
 const fs = require("fs");
-const file = process.argv[1];
-const key = process.argv[2];
-if (!fs.existsSync(file)) process.exit(0);
-const raw = fs.readFileSync(file, "utf8").trim();
-if (!raw) process.exit(0);
-const value = JSON.parse(raw)[key];
-if (value === undefined || value === null) process.exit(0);
-if (Array.isArray(value)) console.log(value.join(","));
-else console.log(String(value));
+try {
+  const file = process.argv[1], key = process.argv[2];
+  if (!fs.existsSync(file)) process.exit(0);
+  const raw = fs.readFileSync(file, "utf8").trim();
+  if (!raw) process.exit(0);
+  const value = JSON.parse(raw)[key];
+  if (value === undefined || value === null) process.exit(0);
+  console.log(Array.isArray(value) ? value.join(",") : String(value));
+} catch (e) { process.exit(0); }
 ' "$file" "$key"
 }
 
