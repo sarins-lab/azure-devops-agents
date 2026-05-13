@@ -1,8 +1,8 @@
 {
-	"azure-devops": {
-		"command": "node",
-		"args": [
-			"${CLAUDE_PLUGIN_ROOT}/scripts/ado-mcp-launcher.mjs"
-		]
-	}
+  "azure-devops": {
+    "command": "node",
+    "args": [
+      "${CLAUDE_PLUGIN_ROOT}/scripts/ado-mcp-launcher.mjs"
+    ]
+  }
 }
