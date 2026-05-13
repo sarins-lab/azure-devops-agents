@@ -194,17 +194,26 @@ done
 # Must run before mode inference so a dockerImage in config correctly sets mode=docker.
 _ado_existing_config="${ADO_MCP_HOME:-$HOME}/.ado-mcp/config.json"
 if [[ -f "$_ado_existing_config" ]] && command -v node >/dev/null 2>&1; then
-  if ! node -e '
-const r = require("fs").readFileSync(process.argv[1], "utf8").trim();
-if (r) JSON.parse(r);
-' "$_ado_existing_config" 2>/dev/null; then
-    echo "Warning: could not parse existing config $_ado_existing_config — run with --organization to reconfigure." >&2
+  if _ado_cfg="$(node -e '
+const fs = require("fs");
+const raw = fs.readFileSync(process.argv[1], "utf8").trim();
+if (!raw) process.exit(0);
+const d = JSON.parse(raw);
+const get = k => { const v = d[k]; return v !== undefined && v !== null ? Array.isArray(v) ? v.join(",") : String(v) : ""; };
+process.stdout.write(get("organization") + "\t" + get("project") + "\t" + get("team") + "\t" + get("dockerImage") + "\n");
+' "$_ado_existing_config" 2>/dev/null)"; then
+    if [[ -n "$_ado_cfg" ]]; then
+      IFS=$'\t' read -r _cfg_org _cfg_project _cfg_team _cfg_docker <<< "$_ado_cfg"
+      [[ -z "$organization" && -n "$_cfg_org" ]]     && organization="$_cfg_org"
+      [[ -z "$project"      && -n "$_cfg_project" ]] && project="$_cfg_project"
+      [[ -z "$team"         && -n "$_cfg_team" ]]    && team="$_cfg_team"
+      [[ -z "$docker_image" && -n "$_cfg_docker" ]]  && docker_image="$_cfg_docker"
+      unset _cfg_org _cfg_project _cfg_team _cfg_docker
+    fi
   else
-    [[ -z "$organization" ]] && organization="$(json_get "$_ado_existing_config" organization)"
-    [[ -z "$project" ]]      && project="$(json_get "$_ado_existing_config" project)"
-    [[ -z "$team" ]]         && team="$(json_get "$_ado_existing_config" team)"
-    [[ -z "$docker_image" ]] && docker_image="$(json_get "$_ado_existing_config" dockerImage)"
+    echo "Warning: could not parse existing config $_ado_existing_config — run with --organization to reconfigure." >&2
   fi
+  unset _ado_cfg
 fi
 unset _ado_existing_config
 
