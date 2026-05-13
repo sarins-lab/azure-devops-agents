@@ -13,7 +13,7 @@ tools:
     "mcp__azure-devops__mcp_ado_wit_list_backlogs",
     "mcp__azure-devops__mcp_ado_wit_list_backlog_work_items",
     "mcp__azure-devops__mcp_ado_wit_get_work_items_for_iteration",
-    "mcp__azure-devops__mcp_ado_wit_query_by_wiql",
+    "mcp__azure-devops__mcp_ado_wit_query_by_wiql"
   ]
 ---
 
