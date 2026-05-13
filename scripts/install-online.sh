@@ -148,21 +148,30 @@ done
 # Fall back to an existing ~/.ado-mcp/config.json so re-installs work without args.
 _ado_existing_config="${ADO_MCP_HOME:-$HOME}/.ado-mcp/config.json"
 if [[ -f "$_ado_existing_config" ]] && command -v node >/dev/null 2>&1; then
-  _ado_cfg_get() {
-    node -e '
+  if ! node -e '
+const r = require("fs").readFileSync(process.argv[1], "utf8").trim();
+if (r) JSON.parse(r);
+' "$_ado_existing_config" 2>/dev/null; then
+    echo "Warning: could not parse existing config $HOME/.ado-mcp/config.json — run with --organization to reconfigure." >&2
+  else
+    _ado_cfg_get() {
+      node -e '
 const fs = require("fs");
-const d = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+const raw = fs.readFileSync(process.argv[1], "utf8").trim();
+if (!raw) process.exit(0);
+const d = JSON.parse(raw);
 const v = d[process.argv[2]];
 if (v !== undefined && v !== null) {
   console.log(Array.isArray(v) ? v.join(",") : String(v));
 }
 ' "$_ado_existing_config" "$1" 2>/dev/null || true
-  }
-  [[ -z "$organization" ]] && organization="$(_ado_cfg_get organization)"
-  [[ -z "$project" ]]      && project="$(_ado_cfg_get project)"
-  [[ -z "$team" ]]         && team="$(_ado_cfg_get team)"
-  [[ -z "$docker_image" ]] && docker_image="$(_ado_cfg_get dockerImage)"
-  unset -f _ado_cfg_get
+    }
+    [[ -z "$organization" ]] && organization="$(_ado_cfg_get organization)"
+    [[ -z "$project" ]]      && project="$(_ado_cfg_get project)"
+    [[ -z "$team" ]]         && team="$(_ado_cfg_get team)"
+    [[ -z "$docker_image" ]] && docker_image="$(_ado_cfg_get dockerImage)"
+    unset -f _ado_cfg_get
+  fi
 fi
 unset _ado_existing_config
 
