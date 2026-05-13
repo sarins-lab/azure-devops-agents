@@ -355,21 +355,36 @@ try {
 }
 
 const instructionKey = "github.copilot.chat.codeGeneration.instructions";
+let changed = false;
 if (Array.isArray(settings[instructionKey])) {
-  settings[instructionKey] = settings[instructionKey].filter(
+  const filtered = settings[instructionKey].filter(
     (item) => !item || item.file !== contextPath
   );
-  if (settings[instructionKey].length === 0) delete settings[instructionKey];
+  if (filtered.length !== settings[instructionKey].length) {
+    changed = true;
+    if (filtered.length === 0) {
+      delete settings[instructionKey];
+    } else {
+      settings[instructionKey] = filtered;
+    }
+  }
 }
 
 const promptKey = "chat.promptFilesLocations";
 if (settings[promptKey] && typeof settings[promptKey] === "object") {
-  delete settings[promptKey][promptsPath];
-  if (Object.keys(settings[promptKey]).length === 0) delete settings[promptKey];
+  if (Object.prototype.hasOwnProperty.call(settings[promptKey], promptsPath)) {
+    delete settings[promptKey][promptsPath];
+    changed = true;
+    if (Object.keys(settings[promptKey]).length === 0) delete settings[promptKey];
+  }
 }
 
-fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + "\n", "utf8");
-console.log(`  Updated VS Code settings: ${settingsPath}`);
+if (changed) {
+  fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + "\n", "utf8");
+  console.log(`  Updated VS Code settings: ${settingsPath}`);
+} else {
+  console.log(`  VS Code settings already clean: ${settingsPath}`);
+}
 NODE
     fi
   else

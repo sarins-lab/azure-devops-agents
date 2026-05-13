@@ -259,26 +259,38 @@ if ($configureVSCode) {
     if (Test-Path -LiteralPath $settingsPath) {
         try {
             $settings = ConvertFrom-JsonOrJsonC -Content (Get-Content -LiteralPath $settingsPath -Raw) -Path $settingsPath
+            $changed = $false
             $instructionKey = "github.copilot.chat.codeGeneration.instructions"
             $prop = $settings.PSObject.Properties[$instructionKey]
             if ($prop -and $prop.Value -is [array]) {
-                $filtered = @($prop.Value | Where-Object { $_.file -ne $copilotCtx })
-                if ($filtered.Count -eq 0) {
-                    $settings.PSObject.Properties.Remove($instructionKey)
-                } else {
-                    $settings.$instructionKey = $filtered
+                $current = @($prop.Value)
+                $filtered = @($current | Where-Object { $_.file -ne $copilotCtx })
+                if ($filtered.Count -ne $current.Count) {
+                    $changed = $true
+                    if ($filtered.Count -eq 0) {
+                        $settings.PSObject.Properties.Remove($instructionKey)
+                    } else {
+                        $settings.$instructionKey = $filtered
+                    }
                 }
             }
             $promptKey = "chat.promptFilesLocations"
             $promptProp = $settings.PSObject.Properties[$promptKey]
             if ($promptProp -and $promptProp.Value -is [psobject]) {
-                $promptProp.Value.PSObject.Properties.Remove($promptDir)
-                if ($promptProp.Value.PSObject.Properties.Count -eq 0) {
-                    $settings.PSObject.Properties.Remove($promptKey)
+                if ($promptProp.Value.PSObject.Properties[$promptDir]) {
+                    $promptProp.Value.PSObject.Properties.Remove($promptDir)
+                    $changed = $true
+                    if ($promptProp.Value.PSObject.Properties.Count -eq 0) {
+                        $settings.PSObject.Properties.Remove($promptKey)
+                    }
                 }
             }
-            $settings | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $settingsPath -Encoding utf8
-            Write-Host "  Updated VS Code settings: $settingsPath"
+            if ($changed) {
+                $settings | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $settingsPath -Encoding utf8
+                Write-Host "  Updated VS Code settings: $settingsPath"
+            } else {
+                Write-Host "  VS Code settings already clean: $settingsPath"
+            }
         } catch {
             Write-Warning "Could not parse $settingsPath - skipping settings update. Remove azure-devops entries manually. $($_.Exception.Message)"
         }

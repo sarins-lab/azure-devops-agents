@@ -66,6 +66,23 @@ function Get-StringValue {
     return $value
 }
 
+function Assert-Node20Available {
+    $nodeCommand = Get-Command node -ErrorAction SilentlyContinue
+    if ($null -eq $nodeCommand) {
+        throw "Node.js 20 or later is required for non-Docker MCP mode. Install Node.js 20+ or configure Docker MCP mode."
+    }
+
+    $nodeMajorText = (& node -p "Number(process.versions.node.split('.')[0])" 2>$null)
+    $nodeMajor = 0
+    if ($LASTEXITCODE -ne 0 -or -not [int]::TryParse([string]$nodeMajorText, [ref]$nodeMajor) -or $nodeMajor -lt 20) {
+        $nodeVersion = (& node --version 2>$null)
+        if ([string]::IsNullOrWhiteSpace($nodeVersion)) {
+            $nodeVersion = "unknown"
+        }
+        throw "Node.js 20 or later is required for non-Docker MCP mode; found $nodeVersion. Install Node.js 20+ or configure Docker MCP mode."
+    }
+}
+
 $userHome = if ([string]::IsNullOrWhiteSpace($env:ADO_MCP_HOME)) { $HOME } else { $env:ADO_MCP_HOME }
 $userConfigPath = Join-Path $userHome ".ado-mcp\config.json"
 $userConfig = Read-JsonFile -Path $userConfigPath
@@ -187,6 +204,8 @@ if ($authentication -eq "azcli") {
         }
     }
 }
+
+Assert-Node20Available
 
 $binArgs = @($organization, "--authentication", $authentication)
 foreach ($domain in $domains) {
