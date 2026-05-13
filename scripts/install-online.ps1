@@ -811,6 +811,7 @@ if (-not [string]::IsNullOrWhiteSpace($Project) -and [string]::IsNullOrWhiteSpac
     $Team = Read-Host "Default Azure DevOps team (optional; repo .ado-mcp.json overrides)"
 }
 
+$configChanged = $true
 if ((Test-Path -LiteralPath $configTarget) -and -not $Force) {
     $existingConfig = Read-JsonFile -Path $configTarget
     $existingDocker = Get-StringValue -Object $existingConfig -Name "dockerImage"
@@ -824,6 +825,7 @@ if ((Test-Path -LiteralPath $configTarget) -and -not $Force) {
         throw "Config already exists with different settings. Use -Force to overwrite: $configTarget"
     }
     Write-Host "MCP config already exists and matches - skipping: $configTarget"
+    $configChanged = $false
 } else {
     $configAuthentication = if ([string]::IsNullOrWhiteSpace($DockerImage)) { $Authentication } else { "envvar" }
     $config = [ordered]@{ organization = $Organization; authentication = $configAuthentication }
@@ -844,7 +846,11 @@ if ((Test-Path -LiteralPath $configTarget) -and -not $Force) {
     Write-Host "Wrote MCP config [$mode]: $configTarget"
 }
 
-Install-GlobalMcpIfMissing
+if ($configChanged -or $Force) {
+    Install-GlobalMcpIfMissing
+} elseif ([string]::IsNullOrWhiteSpace($DockerImage)) {
+    Write-Host "Global @azure-devops/mcp install check skipped because MCP config already matches. Use -Force to retry."
+}
 
 if (-not [string]::IsNullOrWhiteSpace($DockerImage) -and -not [string]::IsNullOrWhiteSpace($AuthToken)) {
     Set-CurrentAndPersistentUserEnvironmentVariable -Name "ADO_MCP_AUTH_TOKEN" -Value $AuthToken

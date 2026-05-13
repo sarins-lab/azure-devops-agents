@@ -750,18 +750,22 @@ if [[ -n "$project" && -z "$team" && -t 0 ]]; then
 fi
 
 incoming_docker="$docker_image"
-if [[ -f "$config_target" && $force -eq 0 && ( "$existing_docker" != "$incoming_docker" || "$existing_org" != "$organization" || "$existing_project" != "$project" || "$existing_team" != "$team" ) ]]; then
-  echo "Config already exists with different settings. Use --force to overwrite: $config_target" >&2
-  exit 1
-fi
+config_changed=1
+if [[ -f "$config_target" && $force -eq 0 ]]; then
+  if [[ "$existing_docker" != "$incoming_docker" || "$existing_org" != "$organization" || "$existing_project" != "$project" || "$existing_team" != "$team" ]]; then
+    echo "Config already exists with different settings. Use --force to overwrite: $config_target" >&2
+    exit 1
+  fi
+  echo "MCP config already exists and matches - skipping (use --force to replace): $config_target"
+  config_changed=0
+else
+  config_authentication="$authentication"
+  if [[ -n "$docker_image" ]]; then
+    config_authentication="envvar"
+  fi
 
-config_authentication="$authentication"
-if [[ -n "$docker_image" ]]; then
-  config_authentication="envvar"
-fi
-
-require_node
-node - "$config_target" "$organization" "$config_authentication" "$domains_csv" "$docker_image" "$project" "$team" <<'NODE'
+  require_node
+  node - "$config_target" "$organization" "$config_authentication" "$domains_csv" "$docker_image" "$project" "$team" <<'NODE'
 const fs = require("fs");
 const [path, organization, authentication, domainsCsv, dockerImage, project, team] = process.argv.slice(2);
 const config = {
@@ -775,9 +779,14 @@ if (dockerImage) config.dockerImage = dockerImage;
 fs.mkdirSync(require("path").dirname(path), { recursive: true });
 fs.writeFileSync(path, `${JSON.stringify(config, null, 2)}\n`, "utf8");
 NODE
-echo "Wrote MCP config: $config_target"
+  echo "Wrote MCP config: $config_target"
+fi
 
-install_global_mcp_if_missing
+if (( config_changed != 0 || force != 0 )); then
+  install_global_mcp_if_missing
+elif [[ "$mode" == "npx" ]]; then
+  echo "Global @azure-devops/mcp install check skipped because MCP config already matches. Use --force to retry."
+fi
 
 if [[ -n "$docker_image" && -n "$auth_token" ]]; then
   printf 'export ADO_MCP_AUTH_TOKEN=%s\n' "$(shell_quote "$auth_token")" > "$env_target"
