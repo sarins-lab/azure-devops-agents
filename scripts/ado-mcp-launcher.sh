@@ -40,15 +40,25 @@ restore_interactive_shell_path() {
   fi
 
   local old_ifs="$IFS"
+  local missing_path_entries=()
   IFS=':'
   for path_entry in $interactive_path; do
     [[ -z "$path_entry" ]] && continue
     case ":$PATH:" in
       *":$path_entry:"*) ;;
-      *) PATH="$path_entry:$PATH" ;;
+      *) missing_path_entries+=("$path_entry") ;;
     esac
   done
   IFS="$old_ifs"
+  if (( ${#missing_path_entries[@]} > 0 )); then
+    local missing_path
+    missing_path="$(IFS=:; printf '%s' "${missing_path_entries[*]}")"
+    if [[ -n "$PATH" ]]; then
+      PATH="$missing_path:$PATH"
+    else
+      PATH="$missing_path"
+    fi
+  fi
   export PATH
 }
 
@@ -194,6 +204,10 @@ fi
 
 if [[ -n "$docker_image" ]]; then
   echo "WARNING: Docker MCP mode is experimental. Use the default global-binary mode where possible." >&2
+  if ! command -v docker >/dev/null 2>&1; then
+    echo "Docker MCP mode requires the Docker CLI in PATH. Install Docker or configure non-Docker MCP mode." >&2
+    exit 1
+  fi
   if [[ -z "${ADO_MCP_AUTH_TOKEN:-}" ]]; then
     echo "Docker MCP mode requires ADO_MCP_AUTH_TOKEN in the host environment." >&2
     exit 1

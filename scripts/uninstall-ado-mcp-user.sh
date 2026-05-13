@@ -38,15 +38,25 @@ restore_interactive_shell_path() {
   fi
 
   local old_ifs="$IFS"
+  local missing_path_entries=()
   IFS=':'
   for path_entry in $interactive_path; do
     [[ -z "$path_entry" ]] && continue
     case ":$PATH:" in
       *":$path_entry:"*) ;;
-      *) PATH="$path_entry:$PATH" ;;
+      *) missing_path_entries+=("$path_entry") ;;
     esac
   done
   IFS="$old_ifs"
+  if (( ${#missing_path_entries[@]} > 0 )); then
+    local missing_path
+    missing_path="$(IFS=:; printf '%s' "${missing_path_entries[*]}")"
+    if [[ -n "$PATH" ]]; then
+      PATH="$missing_path:$PATH"
+    else
+      PATH="$missing_path"
+    fi
+  fi
   export PATH
 }
 
@@ -56,20 +66,24 @@ clients_csv="All"
 purge_global=0
 
 usage() {
-  cat <<'EOF'
-Usage:
-  ./scripts/uninstall.sh [options]
-
-Options:
-  --clients <csv>   All, Claude, VSCode, Codex. Default: All.
-  --purge-global    Also uninstall the global @azure-devops/mcp npm package.
-  -h, --help        Show this help.
-EOF
+  printf '%s\n' \
+    "Usage:" \
+    "  ./scripts/uninstall.sh [options]" \
+    "" \
+    "Options:" \
+    "  --clients <csv>   All, Claude, VSCode, Codex. Default: All." \
+    "  --purge-global    Also uninstall the global @azure-devops/mcp npm package." \
+    "  -h, --help        Show this help."
 }
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --clients)
+      if [[ $# -lt 2 || -z "${2:-}" || "${2:-}" == --* ]]; then
+        echo "Missing value for --clients." >&2
+        usage >&2
+        exit 1
+      fi
       clients_csv="${2:-}"
       shift 2
       ;;

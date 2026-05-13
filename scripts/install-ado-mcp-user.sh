@@ -38,15 +38,25 @@ restore_interactive_shell_path() {
   fi
 
   local old_ifs="$IFS"
+  local missing_path_entries=()
   IFS=':'
   for path_entry in $interactive_path; do
     [[ -z "$path_entry" ]] && continue
     case ":$PATH:" in
       *":$path_entry:"*) ;;
-      *) PATH="$path_entry:$PATH" ;;
+      *) missing_path_entries+=("$path_entry") ;;
     esac
   done
   IFS="$old_ifs"
+  if (( ${#missing_path_entries[@]} > 0 )); then
+    local missing_path
+    missing_path="$(IFS=:; printf '%s' "${missing_path_entries[*]}")"
+    if [[ -n "$PATH" ]]; then
+      PATH="$missing_path:$PATH"
+    else
+      PATH="$missing_path"
+    fi
+  fi
   export PATH
 }
 
