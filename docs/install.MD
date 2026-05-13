@@ -84,6 +84,7 @@ The launcher starts `@azure-devops/mcp` through `npx` and uses the active Azure 
 ### Docker PAT mode
 
 Use this when you want every client to run the same packaged MCP environment.
+On macOS/Linux, Docker mode still requires Node.js 20+ because the Bash installer and launcher use Node to resolve JSON configuration before starting the container.
 
 ```powershell
 docker build -t ghcr.io/sarins-lab/azure-devops-agents:latest .\docker

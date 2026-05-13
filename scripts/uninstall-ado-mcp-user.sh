@@ -223,15 +223,23 @@ if [[ $configure_claude -eq 1 ]]; then
     remove_claude_user_mcp_server
 
     if claude plugin list 2>/dev/null | grep -Eq "azure-devops-agents-claude@azure-devops-agents"; then
-      claude plugin uninstall --scope user azure-devops-agents-claude@azure-devops-agents
-      echo "  Uninstalled plugin: azure-devops-agents-claude"
+      if output="$(claude plugin uninstall --scope user azure-devops-agents-claude@azure-devops-agents 2>&1)"; then
+        echo "  Uninstalled plugin: azure-devops-agents-claude"
+      else
+        printf '%s\n' "$output" >&2
+        echo "  WARN: could not uninstall plugin: azure-devops-agents-claude" >&2
+      fi
     else
       echo "  Plugin not installed, skipping."
     fi
 
     if claude plugin marketplace list 2>/dev/null | grep -Eq "azure-devops-agents"; then
-      claude plugin marketplace remove --scope user azure-devops-agents
-      echo "  Removed marketplace: azure-devops-agents"
+      if output="$(claude plugin marketplace remove --scope user azure-devops-agents 2>&1)"; then
+        echo "  Removed marketplace: azure-devops-agents"
+      else
+        printf '%s\n' "$output" >&2
+        echo "  WARN: could not remove marketplace: azure-devops-agents" >&2
+      fi
     else
       echo "  Marketplace not registered, skipping."
     fi
