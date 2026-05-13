@@ -92,7 +92,7 @@ const raw = fs.readFileSync(file, "utf8").trim();
 if (!raw) process.exit(0);
 
 const data = JSON.parse(raw);
-const shellQuote = (value) => `'${String(value).replace(/'/g, `'\\''`)}'`;
+const shellQuote = (value) => "'" + String(value).replace(/'/g, "'\\''") + "'";
 const emitString = (name, value) => {
   if (typeof value !== "string" || value.trim() === "") return;
   console.log(`${prefix}${name}=${shellQuote(value.trim())}`);

@@ -19,9 +19,12 @@ $ErrorActionPreference = "Stop"
 $installer = Join-Path $PSScriptRoot "install-ado-mcp-user.ps1"
 $installArgs = @{
     Organization   = $Organization
-    Mode           = $Mode
     Authentication = $Authentication
     Domains        = $Domains
+}
+
+if ($PSBoundParameters.ContainsKey("Mode")) {
+    $installArgs.Mode = $Mode
 }
 
 if (-not [string]::IsNullOrWhiteSpace($Project)) {
