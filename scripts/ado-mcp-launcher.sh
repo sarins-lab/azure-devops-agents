@@ -95,13 +95,21 @@ load_config() {
 
   [[ -n "$file" && -f "$file" ]] || return 0
 
-  eval "$(node - <<'NODE' "$file" "$prefix"
+  local assignments
+  if ! assignments="$(node - <<'NODE' "$file" "$prefix"
 const fs = require("fs");
 const [file, prefix] = process.argv.slice(2);
 const raw = fs.readFileSync(file, "utf8").trim();
 if (!raw) process.exit(0);
 
-const data = JSON.parse(raw);
+let data;
+try {
+  data = JSON.parse(raw);
+} catch (err) {
+  console.error(`Azure DevOps MCP launcher could not parse ${file}: ${err.message}`);
+  console.error("Fix the JSON file or remove it, then restart the MCP client.");
+  process.exit(1);
+}
 const shellQuote = (value) => "'" + String(value).replace(/'/g, "'\\''") + "'";
 const emitString = (name, value) => {
   if (typeof value !== "string" || value.trim() === "") return;
@@ -119,7 +127,10 @@ const domains = Array.isArray(data.domains)
   : [];
 console.log(`${prefix}domains=(${domains.map((item) => shellQuote(String(item).trim())).join(" ")})`);
 NODE
-)"
+)"; then
+    exit 1
+  fi
+  eval "$assignments"
 }
 
 find_repo_config() {

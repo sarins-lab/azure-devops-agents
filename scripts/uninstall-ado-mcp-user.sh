@@ -380,6 +380,9 @@ if (settings[promptKey] && typeof settings[promptKey] === "object") {
 }
 
 if (changed) {
+  const backupPath = `${settingsPath}.ado-mcp.${Date.now()}.bak`;
+  fs.copyFileSync(settingsPath, backupPath);
+  console.log(`  Backed up file before JSON rewrite: ${backupPath}`);
   fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + "\n", "utf8");
   console.log(`  Updated VS Code settings: ${settingsPath}`);
 } else {

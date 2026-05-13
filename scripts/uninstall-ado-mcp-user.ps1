@@ -62,6 +62,18 @@ function ConvertFrom-JsonOrJsonC {
     }
 }
 
+function Backup-FileBeforeJsonRewrite {
+    param([string]$Path)
+
+    if (-not (Test-Path -LiteralPath $Path)) {
+        return
+    }
+
+    $backupPath = "$Path.ado-mcp.$(Get-Date -Format 'yyyyMMddHHmmssfff').bak"
+    Copy-Item -LiteralPath $Path -Destination $backupPath -Force
+    Write-Host "  Backed up file before JSON rewrite: $backupPath"
+}
+
 function Remove-ClaudeUserMcpServer {
     param(
         [string]$SuccessMessage,
@@ -286,6 +298,7 @@ if ($configureVSCode) {
                 }
             }
             if ($changed) {
+                Backup-FileBeforeJsonRewrite -Path $settingsPath
                 $settings | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $settingsPath -Encoding utf8
                 Write-Host "  Updated VS Code settings: $settingsPath"
             } else {

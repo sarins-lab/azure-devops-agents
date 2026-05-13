@@ -169,6 +169,18 @@ function Write-Utf8NoBomFile {
     [System.IO.File]::WriteAllText($Path, $text, $encoding)
 }
 
+function Backup-FileBeforeJsonRewrite {
+    param([string]$Path)
+
+    if (-not (Test-Path -LiteralPath $Path)) {
+        return
+    }
+
+    $backupPath = "$Path.ado-mcp.$(Get-Date -Format 'yyyyMMddHHmmssfff').bak"
+    Copy-Item -LiteralPath $Path -Destination $backupPath -Force
+    Write-Host "  Backed up file before JSON rewrite: $backupPath"
+}
+
 function Add-Utf8NoBomFile {
     param(
         [Parameter(Mandatory = $true)][string]$Path,
@@ -764,6 +776,7 @@ function Merge-VSCodeCopilotInstructions {
         $json | Add-Member -NotePropertyName $key -NotePropertyValue $instructions
     }
 
+    Backup-FileBeforeJsonRewrite -Path $SettingsPath
     Write-Utf8NoBomFile -Path $SettingsPath -Value (($json | ConvertTo-Json -Depth 12) + "`n") -NoNewline
     Write-Host "  Added Copilot instruction reference: $SettingsPath"
 }
@@ -791,6 +804,7 @@ function Remove-LegacyVSCodePromptFiles {
                 }
             }
             if ($changed) {
+                Backup-FileBeforeJsonRewrite -Path $SettingsPath
                 Write-Utf8NoBomFile -Path $SettingsPath -Value (($json | ConvertTo-Json -Depth 12) + "`n") -NoNewline
             }
         }

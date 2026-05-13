@@ -171,6 +171,18 @@ function ConvertFrom-JsonOrJsonC {
     }
 }
 
+function Backup-FileBeforeJsonRewrite {
+    param([string]$Path)
+
+    if (-not (Test-Path -LiteralPath $Path)) {
+        return
+    }
+
+    $backupPath = "$Path.ado-mcp.$(Get-Date -Format 'yyyyMMddHHmmssfff').bak"
+    Copy-Item -LiteralPath $Path -Destination $backupPath -Force
+    Write-Host "  Backed up file before JSON rewrite: $backupPath"
+}
+
 function Read-TextFile {
     param(
         [Parameter(Mandatory = $true)]
@@ -476,6 +488,7 @@ function Merge-VSCodeCopilotInstructions {
         $json | Add-Member -NotePropertyName $key -NotePropertyValue $instructions
     }
 
+    Backup-FileBeforeJsonRewrite -Path $SettingsPath
     $json | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $SettingsPath -Encoding utf8
     Write-Host "  Added Copilot instruction reference: $SettingsPath"
 }
@@ -509,6 +522,7 @@ function Remove-LegacyVSCodePromptFiles {
                 }
             }
             if ($changed) {
+                Backup-FileBeforeJsonRewrite -Path $SettingsPath
                 $json | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $SettingsPath -Encoding utf8
             }
         }

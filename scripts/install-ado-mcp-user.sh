@@ -408,6 +408,12 @@ function writeJson(path, value) {
   fs.mkdirSync(require("path").dirname(path), { recursive: true });
   fs.writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`, "utf8");
 }
+function backupBeforeJsonRewrite(path) {
+  if (!fs.existsSync(path)) return;
+  const backupPath = `${path}.ado-mcp.${Date.now()}.bak`;
+  fs.copyFileSync(path, backupPath);
+  console.log(`  Backed up file before JSON rewrite: ${backupPath}`);
+}
 const mcp = readJson(mcpPath);
 mcp.servers = mcp.servers || {};
 if (!mcp.servers["azure-devops"] || force) {
@@ -435,6 +441,7 @@ if (settings !== null) {
     settingsChanged = true;
   }
   if (settingsChanged) {
+    backupBeforeJsonRewrite(settingsPath);
     writeJson(settingsPath, settings);
     console.log(`  Updated VS Code settings: ${settingsPath}`);
   }
@@ -485,6 +492,9 @@ if (settings[key] && typeof settings[key] === "object" && !Array.isArray(setting
   console.log("  Removed empty VS Code prompt location setting");
 }
 if (changed) {
+  const backupPath = `${settingsPath}.ado-mcp.${Date.now()}.bak`;
+  fs.copyFileSync(settingsPath, backupPath);
+  console.log(`  Backed up file before JSON rewrite: ${backupPath}`);
   fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + "\n", "utf8");
 }
 NODE
