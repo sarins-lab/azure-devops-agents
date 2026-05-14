@@ -977,9 +977,78 @@ if ($configureVSCodeNow) {
 if ($configureClaudeNow) {
     Write-Host "Configuring Claude Code..."
 
-    Write-Host "  The online installer writes ~/.claude/CLAUDE.md only."
-    Write-Host "  Installing the Claude plugin-owned MCP server requires a local repo checkout."
-    Write-Host "  Use scripts/install.ps1 or scripts/install.sh from a clone to install azure-devops-agents-claude."
+    $pluginDir = Join-Path $adoHome "plugin"
+    $rawBase = "https://raw.githubusercontent.com/sarins-lab/azure-devops-agents/main"
+
+    $filesToDownload = @(
+        ".claude-plugin/plugin.json",
+        ".claude-plugin/marketplace.json",
+        ".mcp.json",
+        "scripts/ado-mcp-launcher.mjs",
+        "agents/stakeholder-analyst-agent.md",
+        "agents/requirements-analyst-agent.md",
+        "agents/ux-designer-agent.md",
+        "agents/solution-architect-agent.md",
+        "agents/technical-writer-agent.md",
+        "agents/delivery-planner-agent.md",
+        "agents/implementation-lead-agent.md"
+    )
+
+    Write-Host "  Downloading plugin files from GitHub..."
+    $dlOk = $true
+    foreach ($file in $filesToDownload) {
+        $dest = Join-Path $pluginDir ($file -replace "/", "\")
+        New-Item -ItemType Directory -Force -Path (Split-Path -Parent $dest) | Out-Null
+        try {
+            Invoke-WebRequest -Uri "$rawBase/$file" -OutFile $dest -UseBasicParsing
+        } catch {
+            Write-Warning "  Failed to download $file — skipping Claude plugin install."
+            $dlOk = $false
+            break
+        }
+    }
+
+    if ($dlOk) {
+        $claudeCmd = Get-Command claude -ErrorAction SilentlyContinue
+        if ($null -eq $claudeCmd) {
+            Write-Host "  Claude CLI not found. Run manually after installing Claude Code:"
+            Write-Host "    claude plugin marketplace add --scope user `"$pluginDir`""
+            Write-Host "    claude plugin install --scope user azure-devops-agents-claude@azure-devops-agents"
+        } else {
+            $marketplaceList = & claude plugin marketplace list 2>&1
+            if ($marketplaceList -match '>\s+azure-devops-agents\s*$') {
+                Write-Host "  Claude marketplace already registered: azure-devops-agents"
+            } else {
+                & claude plugin marketplace add --scope user $pluginDir
+                Write-Host "  Registered Claude marketplace: azure-devops-agents"
+            }
+
+            $pluginList = & claude plugin list 2>&1
+            if ($pluginList -match 'azure-devops-agents-claude') {
+                Write-Host "  Claude plugin already installed: azure-devops-agents-claude"
+            } else {
+                & claude plugin install --scope user azure-devops-agents-claude@azure-devops-agents
+                Write-Host "  Installed Claude plugin: azure-devops-agents-claude"
+            }
+
+            $claudeSettingsPath = Join-Path $userHome ".claude\settings.json"
+            if (Test-Path -LiteralPath $claudeSettingsPath) {
+                try {
+                    $settings = Get-Content -LiteralPath $claudeSettingsPath -Raw | ConvertFrom-Json
+                    $disabled = $settings.PSObject.Properties["disabledMcpjsonServers"]
+                    if ($null -ne $disabled -and $disabled.Value -contains "azure-devops") {
+                        $filtered = @($disabled.Value | Where-Object { $_ -ne "azure-devops" })
+                        if ($filtered.Count -eq 0) { $settings.PSObject.Properties.Remove("disabledMcpjsonServers") }
+                        else { $disabled.Value = $filtered }
+                        Write-Utf8NoBomFile -Path $claudeSettingsPath -Value (($settings | ConvertTo-Json -Depth 12) + "`n") -NoNewline
+                        Write-Host "  Enabled plugin MCP server in Claude settings: $claudeSettingsPath"
+                    }
+                } catch {
+                    Write-Warning "  Could not parse $claudeSettingsPath — remove disabledMcpjsonServers manually."
+                }
+            }
+        }
+    }
 
     Merge-MarkdownBlock -Path (Join-Path $userHome ".claude\CLAUDE.md") -MarkerName "azure-devops-agents" -Content $claudeContextBlock
 }
@@ -987,7 +1056,7 @@ if ($configureClaudeNow) {
 Write-Host ""
 Write-Host "Done. Client summary:"
 if ($configureClaudeNow) {
-    Write-Host "  Claude Code : ~/.claude/CLAUDE.md updated (plugin install requires a local repo checkout)"
+    Write-Host "  Claude Code : plugin installed + ~/.claude/CLAUDE.md updated"
 }
 if ($configureCodexNow) {
     Write-Host "  Codex       : MCP registered + ~/.codex/AGENTS.md updated"
