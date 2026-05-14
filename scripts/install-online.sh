@@ -89,6 +89,10 @@ authentication="${ADO_MCP_AUTHENTICATION:-}"
 domains_csv="${ADO_MCP_DOMAINS:-}"
 _auth_from_cli=0
 _domains_from_cli=0
+existing_docker=""
+existing_org=""
+existing_project=""
+existing_team=""
 project="${ADO_MCP_PROJECT:-}"
 team="${ADO_MCP_TEAM:-}"
 docker_image="${ADO_MCP_DOCKER_IMAGE:-}"
@@ -272,7 +276,6 @@ merge_markdown_block() {
   local marker="$2"
   local content_file="$3"
   local force_flag="$4"
-  require_node
   mkdir -p "$(dirname "$path")"
   node - "$path" "$marker" "$content_file" "$force_flag" <<'NODE'
 const fs = require("fs");
@@ -306,7 +309,6 @@ merge_vscode_json() {
   local launcher_path="$3"
   local context_path="$4"
   local force_flag="$5"
-  require_node
   mkdir -p "$(dirname "$mcp_path")" "$(dirname "$settings_path")"
   node - "$mcp_path" "$settings_path" "$launcher_path" "$context_path" "$force_flag" <<'NODE'
 const fs = require("fs");
@@ -450,7 +452,6 @@ NODE
 remove_legacy_vscode_prompts() {
   local settings_path="$1"
   local prompt_path="$2"
-  require_node
   node - "$settings_path" "$prompt_path" <<'NODE'
 const fs = require("fs");
 const [settingsPath, promptPath] = process.argv.slice(2);
@@ -507,7 +508,6 @@ write_codex_toml() {
   local codex_toml="$1"
   local launcher_path="$2"
   local force_flag="$3"
-  require_node
   mkdir -p "$(dirname "$codex_toml")"
   local block
   block="$(printf '\n[mcp_servers.azure-devops]\ncommand = "bash"\nargs = [%s]\n' "$(toml_string "$launcher_path")")"
@@ -781,17 +781,6 @@ LAUNCHER
 chmod 700 "$launcher_target"
 echo "Wrote online MCP launcher: $launcher_target"
 
-existing_docker="${existing_docker:-}"
-existing_org="${existing_org:-}"
-existing_project="${existing_project:-}"
-existing_team="${existing_team:-}"
-
-if [[ -z "$project" ]]; then
-  project="$existing_project"
-fi
-if [[ -z "$team" ]]; then
-  team="$existing_team"
-fi
 if [[ -z "$project" && -t 0 ]]; then
   read -r -p "Default Azure DevOps project (optional; repo .ado-mcp.json overrides): " project
 fi
@@ -814,7 +803,6 @@ else
     config_authentication="envvar"
   fi
 
-  require_node
   node - "$config_target" "$organization" "$config_authentication" "$domains_csv" "$docker_image" "$project" "$team" <<'NODE'
 const fs = require("fs");
 const [path, organization, authentication, domainsCsv, dockerImage, project, team] = process.argv.slice(2);
@@ -834,12 +822,8 @@ fi
 
 if (( config_changed != 0 || force != 0 )); then
   install_global_mcp_if_missing
-elif [[ -z "$docker_image" ]] && \
-     ! command -v mcp-server-azuredevops >/dev/null 2>&1 && \
-     ! command -v npx >/dev/null 2>&1; then
-  install_global_mcp_if_missing
 elif [[ -z "$docker_image" ]]; then
-  echo "Global @azure-devops/mcp install check skipped because MCP config already matches. Use --force to retry."
+  install_global_mcp_if_missing
 fi
 
 if [[ -n "$docker_image" && -n "$auth_token" ]]; then

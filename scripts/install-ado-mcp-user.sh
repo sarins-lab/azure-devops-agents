@@ -89,6 +89,10 @@ authentication="${ADO_MCP_AUTHENTICATION:-}"
 domains_csv="${ADO_MCP_DOMAINS:-}"
 _auth_from_cli=0
 _domains_from_cli=0
+existing_docker=""
+existing_org=""
+existing_project=""
+existing_team=""
 project="${ADO_MCP_PROJECT:-}"
 team="${ADO_MCP_TEAM:-}"
 mode="npx"
@@ -654,17 +658,6 @@ mkdir -p "$ado_home"
 cp "$repo_root/scripts/ado-mcp-launcher.sh" "$launcher_target"
 chmod 700 "$launcher_target"
 
-existing_docker="${existing_docker:-}"
-existing_org="${existing_org:-}"
-existing_project="${existing_project:-}"
-existing_team="${existing_team:-}"
-
-if [[ -z "$project" ]]; then
-  project="$existing_project"
-fi
-if [[ -z "$team" ]]; then
-  team="$existing_team"
-fi
 if [[ -z "$project" && -t 0 ]]; then
   read -r -p "Default Azure DevOps project (optional; repo .ado-mcp.json overrides): " project
 fi
@@ -698,6 +691,7 @@ const config = {
 if (project) config.project = project;
 if (team) config.team = team;
 if (dockerImage) config.dockerImage = dockerImage;
+fs.mkdirSync(require("path").dirname(path), { recursive: true });
 fs.writeFileSync(path, `${JSON.stringify(config, null, 2)}\n`, "utf8");
 NODE
   echo "Wrote MCP config: $config_target"
