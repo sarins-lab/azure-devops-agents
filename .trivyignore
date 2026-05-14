@@ -1,3 +1,7 @@
+# CVE in ip-address bundled inside the GitHub Actions runner's system npm — not our dependency.
+# Path: /usr/local/lib/node_modules/npm/node_modules/ip-address (runner environment, not project code).
+CVE-2026-42338
+
 # Risk acceptance for transitive vulnerabilities reported in the bundled Node.js dependency tree
 # of @azure-devops/mcp. These are not directly imported by repository code and currently have
 # no patched upstream release path in @azure-devops/mcp 2.7.0.
