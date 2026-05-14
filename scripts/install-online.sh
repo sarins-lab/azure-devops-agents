@@ -956,17 +956,22 @@ if [[ $configure_claude -eq 1 ]]; then
   echo "Configuring Claude Code..."
 
   plugin_dir="$ado_home/plugin"
-  plugin_archive_url="https://github.com/sarins-lab/azure-devops-agents/archive/refs/heads/main.tar.gz"
+  _raw="https://raw.githubusercontent.com/sarins-lab/azure-devops-agents/main"
 
   echo "  Downloading plugin files from GitHub..."
-  mkdir -p "$plugin_dir"
-  if curl -fsSL "$plugin_archive_url" | tar -xz --strip-components=1 -C "$plugin_dir"; then
-    echo "  Plugin files downloaded: $plugin_dir"
-  else
-    echo "  WARN: failed to download plugin archive — skipping Claude plugin install." >&2
-  fi
+  mkdir -p "$plugin_dir/.claude-plugin" "$plugin_dir/scripts"
+  _dl_ok=1
+  for _file in ".claude-plugin/plugin.json" ".claude-plugin/marketplace.json" ".mcp.json" "scripts/ado-mcp-launcher.mjs"; do
+    if ! curl -fsSL "$_raw/$_file" -o "$plugin_dir/$_file"; then
+      echo "  WARN: failed to download $_file — skipping Claude plugin install." >&2
+      _dl_ok=0
+      break
+    fi
+  done
+  unset _raw _file
 
-  if [[ -d "$plugin_dir/.claude-plugin" ]]; then
+  if [[ "${_dl_ok:-0}" -eq 1 ]]; then
+    unset _dl_ok
     if ! command -v claude >/dev/null 2>&1; then
       echo "  Claude CLI not found. Run manually after installing Claude Code:"
       echo "    claude plugin marketplace add --scope user \"$plugin_dir\""
