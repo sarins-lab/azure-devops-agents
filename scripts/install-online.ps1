@@ -973,6 +973,7 @@ if ($configureClaudeNow) {
                 try {
                     $rawSettings = Get-Content -LiteralPath $claudeSettingsPath -Raw
                     $settings = ConvertFrom-JsonOrJsonC -Content $rawSettings -Path $claudeSettingsPath
+                    if ($null -eq $settings) { return }
                     $disabled = $settings.PSObject.Properties["disabledMcpjsonServers"]
                     if ($null -ne $disabled -and $disabled.Value -contains "azure-devops") {
                         $filtered = @($disabled.Value | Where-Object { $_ -ne "azure-devops" })
