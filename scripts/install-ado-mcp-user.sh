@@ -104,6 +104,8 @@ try {
 organization=""
 authentication=""
 domains_csv=""
+_auth_from_cli=0
+_domains_from_cli=0
 project="${ADO_MCP_PROJECT:-}"
 team="${ADO_MCP_TEAM:-}"
 mode="npx"
@@ -149,10 +151,12 @@ while [[ $# -gt 0 ]]; do
       ;;
     --authentication)
       authentication="${2:-}"
+      _auth_from_cli=1
       shift 2
       ;;
     --domains)
       domains_csv="${2:-}"
+      _domains_from_cli=1
       shift 2
       ;;
     --project)
@@ -209,8 +213,8 @@ process.stdout.write(get("organization") + "\n" + get("project") + "\n" + get("t
       [[ -z "$project"       && -n "$_cfg_project" ]] && project="$_cfg_project"
       [[ -z "$team"          && -n "$_cfg_team" ]]    && team="$_cfg_team"
       [[ -z "$docker_image"  && -n "$_cfg_docker" ]]  && docker_image="$_cfg_docker"
-      [[ -z "$authentication" && -n "$_cfg_auth" ]]   && authentication="$_cfg_auth"
-      [[ -z "$domains_csv"   && -n "$_cfg_domains" ]] && domains_csv="$_cfg_domains"
+      [[ $_auth_from_cli    -eq 0 && -z "$authentication" && -n "$_cfg_auth" ]]   && authentication="$_cfg_auth"
+      [[ $_domains_from_cli -eq 0 && -z "$domains_csv"   && -n "$_cfg_domains" ]] && domains_csv="$_cfg_domains"
       existing_org="$_cfg_org"
       existing_project="$_cfg_project"
       existing_team="$_cfg_team"
@@ -224,8 +228,9 @@ process.stdout.write(get("organization") + "\n" + get("project") + "\n" + get("t
   unset _ado_cfg
 fi
 unset _ado_existing_config
-[[ -z "$authentication" ]] && authentication="azcli"
-[[ -z "$domains_csv" ]]    && domains_csv="core,work,work-items,repositories,wiki"
+[[ $_auth_from_cli    -eq 0 && -z "$authentication" ]] && authentication="azcli"
+[[ $_domains_from_cli -eq 0 && -z "$domains_csv" ]]    && domains_csv="core,work,work-items,repositories,wiki"
+unset _auth_from_cli _domains_from_cli
 
 # Normalise mode — infer docker only when --mode was not provided explicitly.
 if [[ -n "$docker_image" ]]; then
