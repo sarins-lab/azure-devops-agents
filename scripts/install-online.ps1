@@ -12,6 +12,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+$script:AdoRawBase = "https://raw.githubusercontent.com/sarins-lab/azure-devops-agents/main"
 
 function Test-WindowsPlatform {
     if ($PSVersionTable.PSEdition -eq "Desktop") {
@@ -510,80 +511,18 @@ if ($mcpBin) {
 exit $LASTEXITCODE
 '@
 
-$McpRules = @'
-# Azure DevOps MCP Tooling
-
-Use Microsoft's official `@azure-devops/mcp` package through the `azure-devops` MCP server.
-
-Tool names use the `mcp_ado_*` naming pattern.
-
-Use RUP-style SDLC concepts as the planning model: Stakeholder Request, Functional Requirement, Non-Functional Requirement, UX Artifact, Technical Requirement, Architecture, Technical Documentation, Delivery Slice, and Task.
-
-Architecture must be cohesive: boundaries, components, runtime flows, deployment, data, security, operations, decisions, tradeoffs, and open questions. Mermaid diagrams for Azure DevOps wiki must use ::: mermaid blocks, graph TD; or graph LR; for flowcharts, simple node IDs, quoted ASCII labels, no HTML, no Markdown labels, no angle-bracket placeholders, no raw Unicode symbols, and no GitHub-style Mermaid code fences.
-
-Before writing, call `mcp_ado_wit_list_backlogs` and `mcp_ado_wit_get_work_item_type` to derive the active Azure DevOps process profile.
-
-`mcp_ado_wit_add_child_work_items` creates child work items and parent links. It supports title, description, area path, iteration path, and Markdown/HTML format.
-
-It does not set Acceptance Criteria, Story Points, Effort, Size, Requirement Type, Tags, or custom fields. Add those afterward with `mcp_ado_wit_update_work_item` only when the target work item type exposes those fields.
-
-Use `mcp_ado_wit_work_items_link` only to repair or add links after creation.
-
-For backlog lookup, call `mcp_ado_wit_list_backlogs` first, then call `mcp_ado_wit_list_backlog_work_items` with `project`, `team`, and `backlogId`.
-
-For wiki lookup, use `mcp_ado_wiki_list_wikis`, `mcp_ado_wiki_list_pages`, `mcp_ado_wiki_get_page`, and `mcp_ado_wiki_get_page_content`.
-'@
-
-$CodexContext = @'
-# Azure DevOps RUP Planning
-
-The `azure-devops` MCP server is configured at user level via `~/.codex/config.toml`.
-The installer stores a default `project` and optional `team` in `~/.ado-mcp/config.json`. Place `.ado-mcp.json` in any repo root to override `project` and `team`; the launcher injects the resolved values automatically.
-
-Plan using RUP-style concepts: Stakeholder Request, Functional Requirement, Non-Functional Requirement, UX Artifact, Technical Requirement, Architecture, Technical Documentation, Delivery Slice, and Task.
-
-Preferred routes: `/capture-request`, `/define-requirements`, `/design-ux`, `/plan-requirement`, `/document-solution`, `/plan-delivery`, `/plan-task`.
-
-Natural planning phrases such as "I want to", "we need to", "setup", "build", "design", "implement", "secure", "expose", "document", "diagram", and "break down" should trigger planning even when Azure DevOps or RUP is not mentioned.
-
-Before implementation, repository edits, deployment, or configuration work starts, verify traceability to an existing approved Azure DevOps work item or confirmed RUP planning artifact. If the requested work is not already represented in Azure DevOps, capture it as a new Stakeholder Request or Change Request and run the SDLC workflow first. User-facing work must include UX or an explicit UX-not-applicable decision.
-
-Architecture must be cohesive, not a technology list. Technical documentation must not introduce architecture decisions. Mermaid diagrams for Azure DevOps wiki must use ::: mermaid blocks, graph TD; or graph LR; for flowcharts, simple node IDs, quoted ASCII labels, no HTML, no Markdown labels, no angle-bracket placeholders, no raw Unicode symbols, and no GitHub-style Mermaid code fences.
-
-Do not create Azure DevOps work items until the user confirms the plan.
-'@
-
-$ClaudeContext = @'
-# Azure DevOps RUP Planning
-
-Use the `azure-devops` MCP server for Azure DevOps planning work. The installer stores a default `project` and optional `team` in `~/.ado-mcp/config.json`. Place `.ado-mcp.json` in any repo root to override `project` and `team`; the launcher injects the resolved values automatically.
-
-Plan using RUP-style concepts: Stakeholder Request, Functional Requirement, Non-Functional Requirement, UX Artifact, Technical Requirement, Architecture, Technical Documentation, Delivery Slice, and Task.
-
-Natural planning phrases such as "I want to", "we need to", "setup", "build", "design", "implement", "secure", "expose", "document", "diagram", and "break down" should trigger planning even when Azure DevOps or RUP is not mentioned.
-
-Before implementation, repository edits, deployment, or configuration work starts, verify traceability to an existing approved Azure DevOps work item or confirmed RUP planning artifact. If the requested work is not already represented in Azure DevOps, capture it as a new Stakeholder Request or Change Request and run the SDLC workflow first. User-facing work must include UX or an explicit UX-not-applicable decision.
-
-Architecture must be cohesive, not a technology list. Technical documentation must not introduce architecture decisions. Mermaid diagrams for Azure DevOps wiki must use ::: mermaid blocks, graph TD; or graph LR; for flowcharts, simple node IDs, quoted ASCII labels, no HTML, no Markdown labels, no angle-bracket placeholders, no raw Unicode symbols, and no GitHub-style Mermaid code fences.
-
-Pause after each SDLC role phase. Never create Azure DevOps work items until the user confirms the plan.
-'@
-
-$CopilotContext = @'
-# Azure DevOps RUP Planning
-
-Use the `azure-devops` MCP server for all Azure DevOps operations. The installer stores a default project and optional team in `~/.ado-mcp/config.json`; the launcher reads `.ado-mcp.json` from the repo root to override those values when present.
-
-Plan using RUP-style concepts: Stakeholder Request, Functional Requirement, Non-Functional Requirement, UX Artifact, Technical Requirement, Architecture, Technical Documentation, Delivery Slice, and Task.
-
-Recognize `/capture-request`, `/define-requirements`, `/design-ux`, `/plan-requirement`, `/document-solution`, `/plan-delivery`, `/plan-task`, and natural planning intent.
-
-Natural planning phrases such as "I want to", "we need to", "setup", "build", "design", "implement", "secure", "expose", "document", "diagram", and "break down" should trigger planning even when Azure DevOps or RUP is not mentioned.
-
-Before implementation, repository edits, deployment, or configuration work starts, verify traceability to an existing approved Azure DevOps work item or confirmed RUP planning artifact. If the requested work is not already represented in Azure DevOps, capture it as a new Stakeholder Request or Change Request and run the SDLC workflow first. User-facing work must include UX or an explicit UX-not-applicable decision.
-
-Architecture must be cohesive, not a technology list. Technical documentation must not introduce architecture decisions. Mermaid diagrams for Azure DevOps wiki must use ::: mermaid blocks, graph TD; or graph LR; for flowcharts, simple node IDs, quoted ASCII labels, no HTML, no Markdown labels, no angle-bracket placeholders, no raw Unicode symbols, and no GitHub-style Mermaid code fences.
-'@
+function Get-RemoteJoinedContent {
+    param([string[]]$Paths)
+    $rawBase = $script:AdoRawBase
+    $parts = @()
+    foreach ($path in $Paths) {
+        $content = (Invoke-WebRequest -Uri "$rawBase/$path" -UseBasicParsing).Content.TrimEnd()
+        if (-not [string]::IsNullOrWhiteSpace($content)) {
+            $parts += $content
+        }
+    }
+    return [string]::Join("`n`n", $parts)
+}
 
 function Join-TextSections {
     param([string[]]$Sections)
@@ -847,10 +786,6 @@ $launcherTarget = Join-Path $adoHome "ado-mcp.ps1"
 $configTarget = Join-Path $adoHome "config.json"
 $copilotTarget = Join-Path $adoHome "copilot-context.md"
 
-$codexContextBlock = Join-TextSections -Sections @($CodexContext, $McpRules)
-$claudeContextBlock = Join-TextSections -Sections @($ClaudeContext, $McpRules)
-$copilotContextFile = Join-TextSections -Sections @($CopilotContext, $McpRules)
-
 New-Item -ItemType Directory -Force -Path $adoHome | Out-Null
 Write-Utf8NoBomFile -Path $launcherTarget -Value ($LauncherScript.TrimEnd() + "`n") -NoNewline
 Write-Host "Wrote online MCP launcher: $launcherTarget"
@@ -952,6 +887,7 @@ if ($configureCodexNow) {
         Write-Host "  Configured Codex MCP: $codexToml"
     }
 
+    $codexContextBlock = Get-RemoteJoinedContent -Paths @("plugins/azure-devops-agents-codex/AGENTS.md", "shared/workflows/rup-planning.md", "shared/mcp/azure-devops-tools.md")
     Merge-MarkdownBlock -Path (Join-Path $codexDir "AGENTS.md") -MarkerName "azure-devops-agents" -Content $codexContextBlock
 }
 
@@ -967,6 +903,7 @@ if ($configureVSCodeNow) {
     $vsCodeSettingsPath = Join-Path $vsCodeUserDir "settings.json"
     $legacyPromptDir = Join-Path $adoHome "prompts"
 
+    $copilotContextFile = Get-RemoteJoinedContent -Paths @("plugins/azure-devops-agents-vscode/copilot-instructions.md", "shared/workflows/rup-planning.md", "shared/mcp/azure-devops-tools.md")
     Write-Utf8NoBomFile -Path $copilotTarget -Value ($copilotContextFile.TrimEnd() + "`n") -NoNewline
 
     Merge-VSCodeMcpServer -Path $vsCodeMcpPath -LauncherPath $launcherTarget
@@ -977,17 +914,92 @@ if ($configureVSCodeNow) {
 if ($configureClaudeNow) {
     Write-Host "Configuring Claude Code..."
 
-    Write-Host "  The online installer writes ~/.claude/CLAUDE.md only."
-    Write-Host "  Installing the Claude plugin-owned MCP server requires a local repo checkout."
-    Write-Host "  Use scripts/install.ps1 or scripts/install.sh from a clone to install azure-devops-agents-claude."
+    $pluginDir = Join-Path $adoHome "plugin"
+    $rawBase = $script:AdoRawBase
 
+    $filesToDownload = @(
+        ".claude-plugin/plugin.json",
+        ".claude-plugin/marketplace.json",
+        ".mcp.json",
+        "scripts/ado-mcp-launcher.mjs",
+        "scripts/ado-mcp-launcher.sh",
+        "agents/stakeholder-analyst-agent.md",
+        "agents/requirements-analyst-agent.md",
+        "agents/ux-designer-agent.md",
+        "agents/solution-architect-agent.md",
+        "agents/technical-writer-agent.md",
+        "agents/delivery-planner-agent.md",
+        "agents/implementation-lead-agent.md"
+    )
+
+    Write-Host "  Downloading plugin files from GitHub..."
+    $dlOk = $true
+    foreach ($file in $filesToDownload) {
+        $dest = Join-Path $pluginDir ($file -replace "/", "\")
+        New-Item -ItemType Directory -Force -Path (Split-Path -Parent $dest) | Out-Null
+        try {
+            Invoke-WebRequest -Uri "$rawBase/$file" -OutFile $dest -UseBasicParsing
+        } catch {
+            Write-Warning "  Failed to download $file — skipping Claude plugin install."
+            $dlOk = $false
+            break
+        }
+    }
+
+    if ($dlOk) {
+        $claudeCmd = Get-Command claude -ErrorAction SilentlyContinue
+        if ($null -eq $claudeCmd) {
+            Write-Host "  Claude CLI not found. Run manually after installing Claude Code:"
+            Write-Host "    claude plugin marketplace add --scope user `"$pluginDir`""
+            Write-Host "    claude plugin install --scope user azure-devops-agents-claude@azure-devops-agents"
+        } else {
+            $marketplaceList = & claude plugin marketplace list 2>&1
+            if ($marketplaceList -match '\bazure-devops-agents\b') {
+                Write-Host "  Claude marketplace already registered: azure-devops-agents"
+            } else {
+                & claude plugin marketplace add --scope user $pluginDir
+                Write-Host "  Registered Claude marketplace: azure-devops-agents"
+            }
+
+            $pluginList = & claude plugin list 2>&1
+            if ($pluginList -match '\bazure-devops-agents-claude\b') {
+                Write-Host "  Claude plugin already installed: azure-devops-agents-claude"
+            } else {
+                & claude plugin install --scope user azure-devops-agents-claude@azure-devops-agents
+                Write-Host "  Installed Claude plugin: azure-devops-agents-claude"
+            }
+
+            $claudeSettingsPath = Join-Path $userHome ".claude\settings.json"
+            if (Test-Path -LiteralPath $claudeSettingsPath) {
+                try {
+                    $rawSettings = Get-Content -LiteralPath $claudeSettingsPath -Raw
+                    $settings = ConvertFrom-JsonOrJsonC -Content $rawSettings -Path $claudeSettingsPath
+                    if ($null -ne $settings) {
+                        $disabled = $settings.PSObject.Properties["disabledMcpjsonServers"]
+                        if ($null -ne $disabled -and $disabled.Value -contains "azure-devops") {
+                            $filtered = @($disabled.Value | Where-Object { $_ -ne "azure-devops" })
+                            if ($filtered.Count -eq 0) { $settings.PSObject.Properties.Remove("disabledMcpjsonServers") }
+                            else { $disabled.Value = $filtered }
+                            Backup-FileBeforeJsonRewrite -Path $claudeSettingsPath
+                            Write-Utf8NoBomFile -Path $claudeSettingsPath -Value (($settings | ConvertTo-Json -Depth 12) + "`n") -NoNewline
+                            Write-Host "  Enabled plugin MCP server in Claude settings: $claudeSettingsPath"
+                        }
+                    }
+                } catch {
+                    Write-Warning "  Could not parse $claudeSettingsPath — remove disabledMcpjsonServers manually."
+                }
+            }
+        }
+    }
+
+    $claudeContextBlock = Get-RemoteJoinedContent -Paths @("plugins/azure-devops-agents-claude/CLAUDE.md", "shared/workflows/rup-planning.md", "shared/mcp/azure-devops-tools.md")
     Merge-MarkdownBlock -Path (Join-Path $userHome ".claude\CLAUDE.md") -MarkerName "azure-devops-agents" -Content $claudeContextBlock
 }
 
 Write-Host ""
 Write-Host "Done. Client summary:"
 if ($configureClaudeNow) {
-    Write-Host "  Claude Code : ~/.claude/CLAUDE.md updated (plugin install requires a local repo checkout)"
+    Write-Host "  Claude Code : plugin installed + ~/.claude/CLAUDE.md updated"
 }
 if ($configureCodexNow) {
     Write-Host "  Codex       : MCP registered + ~/.codex/AGENTS.md updated"

@@ -61,6 +61,7 @@ restore_interactive_shell_path() {
 }
 
 restore_interactive_shell_path
+_ADO_RAW_BASE="https://raw.githubusercontent.com/sarins-lab/azure-devops-agents/main"
 
 require_node() {
   if ! command -v node >/dev/null 2>&1; then
@@ -263,6 +264,56 @@ toml_string() {
 shell_quote() {
   local value="$1"
   printf "'%s'" "$(printf '%s' "$value" | sed "s/'/'\\\\''/g")"
+}
+
+enable_plugin_mcp_json_server() {
+  local settings_path="$1"
+  local server_name="$2"
+  [[ -f "$settings_path" ]] || return 0
+  node - "$settings_path" "$server_name" <<'NODE'
+const fs = require("fs");
+const [settingsPath, serverName] = process.argv.slice(2);
+function stripJsonc(s) {
+  let o = "", inStr = false, esc = false;
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i], n = s[i+1];
+    if (esc) { o += c; esc = false; continue; }
+    if (inStr && c === "\\") { o += c; esc = true; continue; }
+    if (c === '"') { inStr = !inStr; o += c; continue; }
+    if (inStr) { o += c; continue; }
+    if (c === "/" && n === "/") { while (i < s.length && s[i] !== "\n") i++; continue; }
+    if (c === "/" && n === "*") { i += 2; while (i < s.length && !(s[i] === "*" && s[i+1] === "/")) i++; i++; continue; }
+    if (c === ",") {
+      let j = i + 1;
+      while (j < s.length && /\s/.test(s[j])) j++;
+      if (s[j] === "}" || s[j] === "]") continue;
+    }
+    o += c;
+  }
+  return o;
+}
+try {
+  const raw = fs.readFileSync(settingsPath, "utf8").trim();
+  if (!raw) process.exit(0);
+  let json;
+  try { json = JSON.parse(raw); } catch { json = JSON.parse(stripJsonc(raw)); }
+  if (!Array.isArray(json.disabledMcpjsonServers) || !json.disabledMcpjsonServers.includes(serverName)) {
+    process.exit(0);
+  }
+  const filtered = json.disabledMcpjsonServers.filter((entry) => entry !== serverName);
+  if (filtered.length === 0) {
+    delete json.disabledMcpjsonServers;
+  } else {
+    json.disabledMcpjsonServers = filtered;
+  }
+  const backupPath = `${settingsPath}.ado-mcp.${Date.now()}.bak`;
+  fs.copyFileSync(settingsPath, backupPath);
+  fs.writeFileSync(settingsPath, JSON.stringify(json, null, 2) + "\n", "utf8");
+  console.log(`  Backed up and updated Claude settings: ${settingsPath}`);
+} catch (err) {
+  console.error(`  WARN: Could not parse ${settingsPath} — remove disabledMcpjsonServers manually. (${err.message})`);
+}
+NODE
 }
 
 write_file() {
@@ -822,8 +873,12 @@ fi
 
 if (( config_changed != 0 || force != 0 )); then
   install_global_mcp_if_missing
-elif [[ -z "$docker_image" ]]; then
+elif [[ -z "$docker_image" ]] && \
+     ! command -v mcp-server-azuredevops >/dev/null 2>&1 && \
+     ! command -v npx >/dev/null 2>&1; then
   install_global_mcp_if_missing
+elif [[ -z "$docker_image" ]]; then
+  echo "Global @azure-devops/mcp install check skipped because MCP config already matches. Use --force to retry."
 fi
 
 if [[ -n "$docker_image" && -n "$auth_token" ]]; then
@@ -833,83 +888,24 @@ if [[ -n "$docker_image" && -n "$auth_token" ]]; then
   echo "Stored ADO_MCP_AUTH_TOKEN in $env_target for Docker MCP mode."
 fi
 
-cat > "$codex_context" <<'EOF'
-# Azure DevOps RUP Planning
-
-The `azure-devops` MCP server is configured at user level via `~/.codex/config.toml`.
-The installer stores a default `project` and optional `team` in `~/.ado-mcp/config.json`. Place `.ado-mcp.json` in any repo root to override `project` and `team`; the launcher injects the resolved values automatically.
-
-Plan using RUP-style concepts: Stakeholder Request, Functional Requirement, Non-Functional Requirement, UX Artifact, Technical Requirement, Architecture, Technical Documentation, Delivery Slice, and Task.
-
-Preferred routes: `/capture-request`, `/define-requirements`, `/design-ux`, `/plan-requirement`, `/document-solution`, `/plan-delivery`, `/plan-task`.
-
-Natural planning phrases such as "I want to", "we need to", "setup", "build", "design", "implement", "secure", "expose", "document", "diagram", and "break down" should trigger planning even when Azure DevOps or RUP is not mentioned.
-
-Before implementation, repository edits, deployment, or configuration work starts, verify traceability to an existing approved Azure DevOps work item or confirmed RUP planning artifact. If the requested work is not already represented in Azure DevOps, capture it as a new Stakeholder Request or Change Request and run the SDLC workflow first. User-facing work must include UX or an explicit UX-not-applicable decision.
-
-Architecture must be cohesive, not a technology list. Technical documentation must not introduce architecture decisions. Mermaid diagrams for Azure DevOps wiki must use ::: mermaid blocks, graph TD; or graph LR; for flowcharts, simple node IDs, quoted ASCII labels, no HTML, no Markdown labels, no angle-bracket placeholders, no raw Unicode symbols, and no GitHub-style Mermaid code fences.
-
-Do not create Azure DevOps work items until the user confirms the plan.
-
-# Azure DevOps MCP Tooling
-
-Use Microsoft's official `@azure-devops/mcp` package through the `azure-devops` MCP server.
-
-Tool names use the `mcp_ado_*` naming pattern.
-
-Use RUP-style SDLC concepts as the planning model. Include UX artifacts, architecture, and technical documentation as traceable planning artifacts. Before writing, call `mcp_ado_wit_list_backlogs` and `mcp_ado_wit_get_work_item_type` to derive the active Azure DevOps process profile.
-
-Architecture must be cohesive: boundaries, components, runtime flows, deployment, data, security, operations, decisions, tradeoffs, and open questions. Mermaid diagrams for Azure DevOps wiki must use ::: mermaid blocks, graph TD; or graph LR; for flowcharts, simple node IDs, quoted ASCII labels, no HTML, no Markdown labels, no angle-bracket placeholders, no raw Unicode symbols, and no GitHub-style Mermaid code fences.
-
-`mcp_ado_wit_add_child_work_items` creates child work items and parent links. It supports title, description, area path, iteration path, and Markdown/HTML format.
-
-It does not set Acceptance Criteria, Story Points, Effort, Size, Requirement Type, Tags, or custom fields. Add those afterward with `mcp_ado_wit_update_work_item` only when the target work item type exposes those fields.
-
-Use `mcp_ado_wit_work_items_link` only to repair or add links after creation.
-
-For backlog lookup, call `mcp_ado_wit_list_backlogs` first, then call `mcp_ado_wit_list_backlog_work_items` with `project`, `team`, and `backlogId`.
-
-For wiki lookup, use `mcp_ado_wiki_list_wikis`, `mcp_ado_wiki_list_pages`, `mcp_ado_wiki_get_page`, and `mcp_ado_wiki_get_page_content`.
-EOF
-
-cat > "$claude_context" <<'EOF'
-# Azure DevOps RUP Planning
-
-Use the `azure-devops` MCP server for Azure DevOps planning work. The installer stores a default `project` and optional `team` in `~/.ado-mcp/config.json`. Place `.ado-mcp.json` in any repo root to override `project` and `team`; the launcher injects the resolved values automatically.
-
-Plan using RUP-style concepts: Stakeholder Request, Functional Requirement, Non-Functional Requirement, UX Artifact, Technical Requirement, Architecture, Technical Documentation, Delivery Slice, and Task.
-
-Natural planning phrases such as "I want to", "we need to", "setup", "build", "design", "implement", "secure", "expose", "document", "diagram", and "break down" should trigger planning even when Azure DevOps or RUP is not mentioned.
-
-Before implementation, repository edits, deployment, or configuration work starts, verify traceability to an existing approved Azure DevOps work item or confirmed RUP planning artifact. If the requested work is not already represented in Azure DevOps, capture it as a new Stakeholder Request or Change Request and run the SDLC workflow first. User-facing work must include UX or an explicit UX-not-applicable decision.
-
-Architecture must be cohesive, not a technology list. Technical documentation must not introduce architecture decisions. Mermaid diagrams for Azure DevOps wiki must use ::: mermaid blocks, graph TD; or graph LR; for flowcharts, simple node IDs, quoted ASCII labels, no HTML, no Markdown labels, no angle-bracket placeholders, no raw Unicode symbols, and no GitHub-style Mermaid code fences.
-
-Pause after each SDLC role phase. Never create Azure DevOps work items until the user confirms the plan.
-
-Use Microsoft's official `@azure-devops/mcp` package. Tool names use the `mcp_ado_*` naming pattern.
-EOF
-
-cat > "$copilot_context" <<'EOF'
-# Azure DevOps RUP Planning
-
-Use the `azure-devops` MCP server for all Azure DevOps operations. The installer stores a default project and optional team in `~/.ado-mcp/config.json`; the launcher reads `.ado-mcp.json` from the repo root to override those values when present.
-
-Plan using RUP-style concepts: Stakeholder Request, Functional Requirement, Non-Functional Requirement, UX Artifact, Technical Requirement, Architecture, Technical Documentation, Delivery Slice, and Task.
-
-Recognize `/capture-request`, `/define-requirements`, `/design-ux`, `/plan-requirement`, `/document-solution`, `/plan-delivery`, `/plan-task`, and natural planning intent.
-
-Natural planning phrases such as "I want to", "we need to", "setup", "build", "design", "implement", "secure", "expose", "document", "diagram", and "break down" should trigger planning even when Azure DevOps or RUP is not mentioned.
-
-Before implementation, repository edits, deployment, or configuration work starts, verify traceability to an existing approved Azure DevOps work item or confirmed RUP planning artifact. If the requested work is not already represented in Azure DevOps, capture it as a new Stakeholder Request or Change Request and run the SDLC workflow first. User-facing work must include UX or an explicit UX-not-applicable decision.
-
-Architecture must be cohesive, not a technology list. Technical documentation must not introduce architecture decisions. Mermaid diagrams for Azure DevOps wiki must use ::: mermaid blocks, graph TD; or graph LR; for flowcharts, simple node IDs, quoted ASCII labels, no HTML, no Markdown labels, no angle-bracket placeholders, no raw Unicode symbols, and no GitHub-style Mermaid code fences.
-
-Use Microsoft's official `@azure-devops/mcp` package. Tool names use the `mcp_ado_*` naming pattern.
-EOF
+_join_remote() {
+  local _raw="$_ADO_RAW_BASE"
+  local out="$1"; shift
+  local first=1
+  for _f in "$@"; do
+    [[ $first -eq 0 ]] && printf '\n\n' >> "$out"
+    curl -fsSL "$_raw/$_f" >> "$out"
+    first=0
+  done
+  unset _raw _f
+}
 
 if [[ $configure_codex -eq 1 ]]; then
   echo "Configuring Codex..."
+  _join_remote "$codex_context" \
+    "plugins/azure-devops-agents-codex/AGENTS.md" \
+    "shared/workflows/rup-planning.md" \
+    "shared/mcp/azure-devops-tools.md"
   codex_dir="$user_home/.codex"
   write_codex_toml "$codex_dir/config.toml" "$launcher_target" "$force"
   merge_markdown_block "$codex_dir/AGENTS.md" "azure-devops-agents" "$codex_context" "$force"
@@ -917,6 +913,10 @@ fi
 
 if [[ $configure_vscode -eq 1 ]]; then
   echo "Configuring VS Code..."
+  _join_remote "$copilot_context" \
+    "plugins/azure-devops-agents-vscode/copilot-instructions.md" \
+    "shared/workflows/rup-planning.md" \
+    "shared/mcp/azure-devops-tools.md"
   cp "$copilot_context" "$copilot_target"
 
   vs_code_dir="$(vscode_user_dir)"
@@ -926,16 +926,76 @@ fi
 
 if [[ $configure_claude -eq 1 ]]; then
   echo "Configuring Claude Code..."
-  echo "  The online installer writes ~/.claude/CLAUDE.md only."
-  echo "  Installing the Claude plugin-owned MCP server requires a local repo checkout."
-  echo "  Use scripts/install.ps1 or scripts/install.sh from a clone to install azure-devops-agents-claude."
+
+  plugin_dir="$ado_home/plugin"
+  _raw="$_ADO_RAW_BASE"
+
+  echo "  Downloading plugin files from GitHub..."
+  _dl_ok=1
+  for _file in \
+    ".claude-plugin/plugin.json" \
+    ".claude-plugin/marketplace.json" \
+    ".mcp.json" \
+    "scripts/ado-mcp-launcher.mjs" \
+    "scripts/ado-mcp-launcher.sh" \
+    "agents/stakeholder-analyst-agent.md" \
+    "agents/requirements-analyst-agent.md" \
+    "agents/ux-designer-agent.md" \
+    "agents/solution-architect-agent.md" \
+    "agents/technical-writer-agent.md" \
+    "agents/delivery-planner-agent.md" \
+    "agents/implementation-lead-agent.md"; do
+    mkdir -p "$(dirname "$plugin_dir/$_file")"
+    if ! curl -fsSL "$_raw/$_file" -o "$plugin_dir/$_file"; then
+      echo "  WARN: failed to download $_file — skipping Claude plugin install." >&2
+      _dl_ok=0
+      break
+    fi
+  done
+  [[ -f "$plugin_dir/scripts/ado-mcp-launcher.sh" ]] && chmod 700 "$plugin_dir/scripts/ado-mcp-launcher.sh"
+  unset _raw _file
+
+  claude_plugin_installed=0
+  if [[ "${_dl_ok:-0}" -eq 1 ]]; then
+    unset _dl_ok
+    if ! command -v claude >/dev/null 2>&1; then
+      echo "  Claude CLI not found. Run manually after installing Claude Code:"
+      echo "    claude plugin marketplace add --scope user \"$plugin_dir\""
+      echo "    claude plugin install --scope user azure-devops-agents-claude@azure-devops-agents"
+    else
+      if claude plugin marketplace list 2>&1 | grep -Eq 'azure-devops-agents([[:space:]]|$)'; then
+        echo "  Claude marketplace already registered: azure-devops-agents"
+      else
+        claude plugin marketplace add --scope user "$plugin_dir"
+        echo "  Registered Claude marketplace: azure-devops-agents"
+      fi
+      if claude plugin list 2>&1 | grep -Eq 'azure-devops-agents-claude'; then
+        echo "  Claude plugin already installed: azure-devops-agents-claude"
+      else
+        claude plugin install --scope user azure-devops-agents-claude@azure-devops-agents
+        echo "  Installed Claude plugin: azure-devops-agents-claude"
+      fi
+      enable_plugin_mcp_json_server "$user_home/.claude/settings.json" "azure-devops"
+      claude_plugin_installed=1
+    fi
+  fi
+
+  _join_remote "$claude_context" \
+    "plugins/azure-devops-agents-claude/CLAUDE.md" \
+    "shared/workflows/rup-planning.md" \
+    "shared/mcp/azure-devops-tools.md"
   merge_markdown_block "$user_home/.claude/CLAUDE.md" "azure-devops-agents" "$claude_context" "$force"
 fi
+unset -f _join_remote
 
 echo
 echo "Done. Client summary:"
 if [[ $configure_claude -eq 1 ]]; then
-  echo "  Claude Code : ~/.claude/CLAUDE.md updated (plugin install requires a local repo checkout)"
+  if [[ ${claude_plugin_installed:-0} -eq 1 ]]; then
+    echo "  Claude Code : plugin installed + ~/.claude/CLAUDE.md updated"
+  else
+    echo "  Claude Code : ~/.claude/CLAUDE.md updated (plugin install pending — Claude CLI missing or download failed)"
+  fi
 fi
 [[ $configure_codex -eq 1 ]] && echo "  Codex       : MCP registered + ~/.codex/AGENTS.md updated"
 [[ $configure_vscode -eq 1 ]] && echo "  VS Code     : MCP registered + Copilot instruction added"
