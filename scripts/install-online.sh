@@ -959,9 +959,20 @@ if [[ $configure_claude -eq 1 ]]; then
   _raw="https://raw.githubusercontent.com/sarins-lab/azure-devops-agents/main"
 
   echo "  Downloading plugin files from GitHub..."
-  mkdir -p "$plugin_dir/.claude-plugin" "$plugin_dir/scripts"
+  mkdir -p "$plugin_dir/.claude-plugin" "$plugin_dir/scripts" "$plugin_dir/agents"
   _dl_ok=1
-  for _file in ".claude-plugin/plugin.json" ".claude-plugin/marketplace.json" ".mcp.json" "scripts/ado-mcp-launcher.mjs"; do
+  for _file in \
+    ".claude-plugin/plugin.json" \
+    ".claude-plugin/marketplace.json" \
+    ".mcp.json" \
+    "scripts/ado-mcp-launcher.mjs" \
+    "agents/stakeholder-analyst-agent.md" \
+    "agents/requirements-analyst-agent.md" \
+    "agents/ux-designer-agent.md" \
+    "agents/solution-architect-agent.md" \
+    "agents/technical-writer-agent.md" \
+    "agents/delivery-planner-agent.md" \
+    "agents/implementation-lead-agent.md"; do
     if ! curl -fsSL "$_raw/$_file" -o "$plugin_dir/$_file"; then
       echo "  WARN: failed to download $_file — skipping Claude plugin install." >&2
       _dl_ok=0
