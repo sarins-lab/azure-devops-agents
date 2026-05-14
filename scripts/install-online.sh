@@ -61,6 +61,7 @@ restore_interactive_shell_path() {
 }
 
 restore_interactive_shell_path
+_ADO_RAW_BASE="https://raw.githubusercontent.com/sarins-lab/azure-devops-agents/main"
 
 require_node() {
   if ! command -v node >/dev/null 2>&1; then
@@ -888,7 +889,7 @@ if [[ -n "$docker_image" && -n "$auth_token" ]]; then
 fi
 
 _join_remote() {
-  local _raw="https://raw.githubusercontent.com/sarins-lab/azure-devops-agents/main"
+  local _raw="$_ADO_RAW_BASE"
   local out="$1"; shift
   local first=1
   for _f in "$@"; do
@@ -927,7 +928,7 @@ if [[ $configure_claude -eq 1 ]]; then
   echo "Configuring Claude Code..."
 
   plugin_dir="$ado_home/plugin"
-  _raw="https://raw.githubusercontent.com/sarins-lab/azure-devops-agents/main"
+  _raw="$_ADO_RAW_BASE"
 
   echo "  Downloading plugin files from GitHub..."
   _dl_ok=1

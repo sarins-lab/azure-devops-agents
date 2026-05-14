@@ -12,6 +12,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+$script:AdoRawBase = "https://raw.githubusercontent.com/sarins-lab/azure-devops-agents/main"
 
 function Test-WindowsPlatform {
     if ($PSVersionTable.PSEdition -eq "Desktop") {
@@ -512,7 +513,7 @@ exit $LASTEXITCODE
 
 function Get-RemoteJoinedContent {
     param([string[]]$Paths)
-    $rawBase = "https://raw.githubusercontent.com/sarins-lab/azure-devops-agents/main"
+    $rawBase = $script:AdoRawBase
     $parts = @()
     foreach ($path in $Paths) {
         $content = (Invoke-WebRequest -Uri "$rawBase/$path" -UseBasicParsing).Content.TrimEnd()
@@ -914,7 +915,7 @@ if ($configureClaudeNow) {
     Write-Host "Configuring Claude Code..."
 
     $pluginDir = Join-Path $adoHome "plugin"
-    $rawBase = "https://raw.githubusercontent.com/sarins-lab/azure-devops-agents/main"
+    $rawBase = $script:AdoRawBase
 
     $filesToDownload = @(
         ".claude-plugin/plugin.json",
@@ -953,7 +954,7 @@ if ($configureClaudeNow) {
             Write-Host "    claude plugin install --scope user azure-devops-agents-claude@azure-devops-agents"
         } else {
             $marketplaceList = & claude plugin marketplace list 2>&1
-            if ($marketplaceList -match 'azure-devops-agents') {
+            if ($marketplaceList -match '\bazure-devops-agents\b') {
                 Write-Host "  Claude marketplace already registered: azure-devops-agents"
             } else {
                 & claude plugin marketplace add --scope user $pluginDir
@@ -961,7 +962,7 @@ if ($configureClaudeNow) {
             }
 
             $pluginList = & claude plugin list 2>&1
-            if ($pluginList -match 'azure-devops-agents-claude') {
+            if ($pluginList -match '\bazure-devops-agents-claude\b') {
                 Write-Host "  Claude plugin already installed: azure-devops-agents-claude"
             } else {
                 & claude plugin install --scope user azure-devops-agents-claude@azure-devops-agents
