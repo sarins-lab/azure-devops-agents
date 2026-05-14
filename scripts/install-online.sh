@@ -193,10 +193,10 @@ const raw = fs.readFileSync(process.argv[1], "utf8").trim();
 if (!raw) process.exit(0);
 const d = JSON.parse(raw);
 const get = k => { const v = d[k]; return v !== undefined && v !== null ? Array.isArray(v) ? v.join(",") : String(v) : ""; };
-process.stdout.write(get("organization") + "\t" + get("project") + "\t" + get("team") + "\t" + get("dockerImage") + "\n");
+process.stdout.write(get("organization") + "\n" + get("project") + "\n" + get("team") + "\n" + get("dockerImage") + "\n");
 ' "$_ado_existing_config" 2>/dev/null)"; then
     if [[ -n "$_ado_cfg" ]]; then
-      IFS=$'\t' read -r _cfg_org _cfg_project _cfg_team _cfg_docker <<< "$_ado_cfg"
+      { read -r _cfg_org; read -r _cfg_project; read -r _cfg_team; read -r _cfg_docker; } <<< "$_ado_cfg"
       [[ -z "$organization" && -n "$_cfg_org" ]]     && organization="$_cfg_org"
       [[ -z "$project"      && -n "$_cfg_project" ]] && project="$_cfg_project"
       [[ -z "$team"         && -n "$_cfg_team" ]]    && team="$_cfg_team"
@@ -561,7 +561,15 @@ install_global_mcp_if_missing() {
 
   if command -v npm >/dev/null 2>&1; then
     echo "Installing @azure-devops/mcp globally..."
-    npm install -g @azure-devops/mcp --silent || echo "WARN: global npm install failed - launcher will fall back to npx." >&2
+    if npm install -g @azure-devops/mcp --silent; then
+      local _npm_bin
+      _npm_bin="$(npm prefix -g 2>/dev/null)/bin"
+      if [[ -d "$_npm_bin" ]]; then
+        case ":$PATH:" in *":$_npm_bin:"*) ;; *) PATH="$_npm_bin:$PATH"; export PATH ;; esac
+      fi
+    else
+      echo "WARN: global npm install failed - launcher will fall back to npx." >&2
+    fi
   else
     echo "WARN: npm not found - skipping global install; launcher will use npx." >&2
   fi
