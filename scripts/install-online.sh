@@ -963,13 +963,13 @@ if [[ $configure_claude -eq 1 ]]; then
       echo "    claude plugin marketplace add --scope user \"$plugin_dir\""
       echo "    claude plugin install --scope user azure-devops-agents-claude@azure-devops-agents"
     else
-      if claude plugin marketplace list | grep -Eq 'azure-devops-agents([[:space:]]|$)'; then
+      if claude plugin marketplace list 2>&1 | grep -Eq 'azure-devops-agents([[:space:]]|$)'; then
         echo "  Claude marketplace already registered: azure-devops-agents"
       else
         claude plugin marketplace add --scope user "$plugin_dir"
         echo "  Registered Claude marketplace: azure-devops-agents"
       fi
-      if claude plugin list | grep -Eq 'azure-devops-agents-claude'; then
+      if claude plugin list 2>&1 | grep -Eq 'azure-devops-agents-claude'; then
         echo "  Claude plugin already installed: azure-devops-agents-claude"
       else
         claude plugin install --scope user azure-devops-agents-claude@azure-devops-agents
