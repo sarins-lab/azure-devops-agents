@@ -9,6 +9,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Request review from Copilot
-        run: gh pr review-request ${{ github.event.pull_request.number }} --user copilot
+        run: gh pr comment ${{ github.event.pull_request.number }} --repo ${{ github.repository }} --body "@copilot review"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
