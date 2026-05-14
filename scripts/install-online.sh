@@ -102,8 +102,8 @@ try {
 }
 
 organization="${ADO_MCP_ORG:-}"
-authentication="${ADO_MCP_AUTHENTICATION:-azcli}"
-domains_csv="${ADO_MCP_DOMAINS:-core,work,work-items,repositories,wiki}"
+authentication="${ADO_MCP_AUTHENTICATION:-}"
+domains_csv="${ADO_MCP_DOMAINS:-}"
 project="${ADO_MCP_PROJECT:-}"
 team="${ADO_MCP_TEAM:-}"
 docker_image="${ADO_MCP_DOCKER_IMAGE:-}"
@@ -193,15 +193,17 @@ const raw = fs.readFileSync(process.argv[1], "utf8").trim();
 if (!raw) process.exit(0);
 const d = JSON.parse(raw);
 const get = k => { const v = d[k]; return v !== undefined && v !== null ? Array.isArray(v) ? v.join(",") : String(v) : ""; };
-process.stdout.write(get("organization") + "\n" + get("project") + "\n" + get("team") + "\n" + get("dockerImage") + "\n");
+process.stdout.write(get("organization") + "\n" + get("project") + "\n" + get("team") + "\n" + get("dockerImage") + "\n" + get("authentication") + "\n" + get("domains") + "\n");
 ' "$_ado_existing_config" 2>/dev/null)"; then
     if [[ -n "$_ado_cfg" ]]; then
-      { read -r _cfg_org; read -r _cfg_project; read -r _cfg_team; read -r _cfg_docker; } <<< "$_ado_cfg"
-      [[ -z "$organization" && -n "$_cfg_org" ]]     && organization="$_cfg_org"
-      [[ -z "$project"      && -n "$_cfg_project" ]] && project="$_cfg_project"
-      [[ -z "$team"         && -n "$_cfg_team" ]]    && team="$_cfg_team"
-      [[ -z "$docker_image" && -n "$_cfg_docker" ]]  && docker_image="$_cfg_docker"
-      unset _cfg_org _cfg_project _cfg_team _cfg_docker
+      { read -r _cfg_org; read -r _cfg_project; read -r _cfg_team; read -r _cfg_docker; read -r _cfg_auth; read -r _cfg_domains; } <<< "$_ado_cfg"
+      [[ -z "$organization"  && -n "$_cfg_org" ]]     && organization="$_cfg_org"
+      [[ -z "$project"       && -n "$_cfg_project" ]] && project="$_cfg_project"
+      [[ -z "$team"          && -n "$_cfg_team" ]]    && team="$_cfg_team"
+      [[ -z "$docker_image"  && -n "$_cfg_docker" ]]  && docker_image="$_cfg_docker"
+      [[ -z "$authentication" && -n "$_cfg_auth" ]]   && authentication="$_cfg_auth"
+      [[ -z "$domains_csv"   && -n "$_cfg_domains" ]] && domains_csv="$_cfg_domains"
+      unset _cfg_org _cfg_project _cfg_team _cfg_docker _cfg_auth _cfg_domains
     fi
   else
     echo "Warning: could not parse existing config $_ado_existing_config — run with --organization to reconfigure." >&2
@@ -209,6 +211,8 @@ process.stdout.write(get("organization") + "\n" + get("project") + "\n" + get("t
   unset _ado_cfg
 fi
 unset _ado_existing_config
+[[ -z "$authentication" ]] && authentication="azcli"
+[[ -z "$domains_csv" ]]    && domains_csv="core,work,work-items,repositories,wiki"
 require_node
 
 if [[ -z "$organization" ]]; then
@@ -562,10 +566,13 @@ install_global_mcp_if_missing() {
   if command -v npm >/dev/null 2>&1; then
     echo "Installing @azure-devops/mcp globally..."
     if npm install -g @azure-devops/mcp --silent; then
-      local _npm_bin
-      _npm_bin="$(npm prefix -g 2>/dev/null)/bin"
-      if [[ -d "$_npm_bin" ]]; then
-        case ":$PATH:" in *":$_npm_bin:"*) ;; *) PATH="$_npm_bin:$PATH"; export PATH ;; esac
+      local _npm_prefix _npm_bin
+      _npm_prefix="$(npm prefix -g 2>/dev/null || true)"
+      if [[ -n "$_npm_prefix" ]]; then
+        _npm_bin="$_npm_prefix/bin"
+        if [[ -d "$_npm_bin" ]]; then
+          case ":$PATH:" in *":$_npm_bin:"*) ;; *) PATH="$_npm_bin:$PATH"; export PATH ;; esac
+        fi
       fi
     else
       echo "WARN: global npm install failed - launcher will fall back to npx." >&2
