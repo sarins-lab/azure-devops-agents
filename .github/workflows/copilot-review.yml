@@ -1,0 +1,14 @@
+name: Auto Request Review from Copilot
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Request review from Copilot
+        run: gh pr review-request ${{ github.event.pull_request.number }} --user copilot
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
