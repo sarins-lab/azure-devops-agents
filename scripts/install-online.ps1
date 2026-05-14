@@ -953,7 +953,7 @@ if ($configureClaudeNow) {
             Write-Host "    claude plugin install --scope user azure-devops-agents-claude@azure-devops-agents"
         } else {
             $marketplaceList = & claude plugin marketplace list 2>&1
-            if ($marketplaceList -match '>\s+azure-devops-agents\s*$') {
+            if ($marketplaceList -match 'azure-devops-agents') {
                 Write-Host "  Claude marketplace already registered: azure-devops-agents"
             } else {
                 & claude plugin marketplace add --scope user $pluginDir

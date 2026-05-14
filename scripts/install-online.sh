@@ -305,8 +305,10 @@ try {
   } else {
     json.disabledMcpjsonServers = filtered;
   }
+  const backupPath = `${settingsPath}.ado-mcp.${Date.now()}.bak`;
+  fs.copyFileSync(settingsPath, backupPath);
   fs.writeFileSync(settingsPath, JSON.stringify(json, null, 2) + "\n", "utf8");
-  console.log(`  Enabled plugin .mcp.json server '${serverName}' in Claude settings: ${settingsPath}`);
+  console.log(`  Backed up and updated Claude settings: ${settingsPath}`);
 } catch (err) {
   console.error(`  WARN: Could not parse ${settingsPath} — remove disabledMcpjsonServers manually. (${err.message})`);
 }
@@ -960,7 +962,7 @@ if [[ $configure_claude -eq 1 ]]; then
       echo "    claude plugin marketplace add --scope user \"$plugin_dir\""
       echo "    claude plugin install --scope user azure-devops-agents-claude@azure-devops-agents"
     else
-      if claude plugin marketplace list | grep -Eq '^[[:space:]]*>[[:space:]]+azure-devops-agents([[:space:]]|$)'; then
+      if claude plugin marketplace list | grep -Eq 'azure-devops-agents([[:space:]]|$)'; then
         echo "  Claude marketplace already registered: azure-devops-agents"
       else
         claude plugin marketplace add --scope user "$plugin_dir"
