@@ -211,6 +211,11 @@ process.stdout.write(get("organization") + "\n" + get("project") + "\n" + get("t
       [[ -z "$docker_image"  && -n "$_cfg_docker" ]]  && docker_image="$_cfg_docker"
       [[ -z "$authentication" && -n "$_cfg_auth" ]]   && authentication="$_cfg_auth"
       [[ -z "$domains_csv"   && -n "$_cfg_domains" ]] && domains_csv="$_cfg_domains"
+      existing_org="$_cfg_org"
+      existing_project="$_cfg_project"
+      existing_team="$_cfg_team"
+      existing_docker="$_cfg_docker"
+      _ado_cfg_preloaded=1
       unset _cfg_org _cfg_project _cfg_team _cfg_docker _cfg_auth _cfg_domains
     fi
   else
@@ -657,16 +662,17 @@ mkdir -p "$ado_home"
 cp "$repo_root/scripts/ado-mcp-launcher.sh" "$launcher_target"
 chmod 700 "$launcher_target"
 
-existing_docker=""
-existing_org=""
-existing_project=""
-existing_team=""
-if [[ -f "$config_target" ]]; then
+existing_docker="${existing_docker:-}"
+existing_org="${existing_org:-}"
+existing_project="${existing_project:-}"
+existing_team="${existing_team:-}"
+if [[ -f "$config_target" && "${_ado_cfg_preloaded:-0}" -eq 0 ]]; then
   existing_docker="$(json_get "$config_target" "dockerImage" || true)"
   existing_org="$(json_get "$config_target" "organization" || true)"
   existing_project="$(json_get "$config_target" "project" || true)"
   existing_team="$(json_get "$config_target" "team" || true)"
 fi
+unset _ado_cfg_preloaded
 
 if [[ -z "$project" ]]; then
   project="$existing_project"
