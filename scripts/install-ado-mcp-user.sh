@@ -84,23 +84,6 @@ require_node() {
   fi
 }
 
-json_get() {
-  local file="$1"
-  local key="$2"
-  node -e '
-const fs = require("fs");
-try {
-  const file = process.argv[1], key = process.argv[2];
-  if (!fs.existsSync(file)) process.exit(0);
-  const raw = fs.readFileSync(file, "utf8").trim();
-  if (!raw) process.exit(0);
-  const value = JSON.parse(raw)[key];
-  if (value === undefined || value === null) process.exit(0);
-  console.log(Array.isArray(value) ? value.join(",") : String(value));
-} catch (e) { process.exit(0); }
-' "$file" "$key"
-}
-
 organization=""
 authentication=""
 domains_csv=""
@@ -219,7 +202,6 @@ process.stdout.write(get("organization") + "\n" + get("project") + "\n" + get("t
       existing_project="$_cfg_project"
       existing_team="$_cfg_team"
       existing_docker="$_cfg_docker"
-      _ado_cfg_preloaded=1
       unset _cfg_org _cfg_project _cfg_team _cfg_docker _cfg_auth _cfg_domains
     fi
   else
@@ -676,7 +658,6 @@ existing_docker="${existing_docker:-}"
 existing_org="${existing_org:-}"
 existing_project="${existing_project:-}"
 existing_team="${existing_team:-}"
-unset _ado_cfg_preloaded
 
 if [[ -z "$project" ]]; then
   project="$existing_project"
