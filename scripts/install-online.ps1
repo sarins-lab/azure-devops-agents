@@ -973,15 +973,16 @@ if ($configureClaudeNow) {
                 try {
                     $rawSettings = Get-Content -LiteralPath $claudeSettingsPath -Raw
                     $settings = ConvertFrom-JsonOrJsonC -Content $rawSettings -Path $claudeSettingsPath
-                    if ($null -eq $settings) { return }
-                    $disabled = $settings.PSObject.Properties["disabledMcpjsonServers"]
-                    if ($null -ne $disabled -and $disabled.Value -contains "azure-devops") {
-                        $filtered = @($disabled.Value | Where-Object { $_ -ne "azure-devops" })
-                        if ($filtered.Count -eq 0) { $settings.PSObject.Properties.Remove("disabledMcpjsonServers") }
-                        else { $disabled.Value = $filtered }
-                        Backup-FileBeforeJsonRewrite -Path $claudeSettingsPath
-                        Write-Utf8NoBomFile -Path $claudeSettingsPath -Value (($settings | ConvertTo-Json -Depth 12) + "`n") -NoNewline
-                        Write-Host "  Enabled plugin MCP server in Claude settings: $claudeSettingsPath"
+                    if ($null -ne $settings) {
+                        $disabled = $settings.PSObject.Properties["disabledMcpjsonServers"]
+                        if ($null -ne $disabled -and $disabled.Value -contains "azure-devops") {
+                            $filtered = @($disabled.Value | Where-Object { $_ -ne "azure-devops" })
+                            if ($filtered.Count -eq 0) { $settings.PSObject.Properties.Remove("disabledMcpjsonServers") }
+                            else { $disabled.Value = $filtered }
+                            Backup-FileBeforeJsonRewrite -Path $claudeSettingsPath
+                            Write-Utf8NoBomFile -Path $claudeSettingsPath -Value (($settings | ConvertTo-Json -Depth 12) + "`n") -NoNewline
+                            Write-Host "  Enabled plugin MCP server in Claude settings: $claudeSettingsPath"
+                        }
                     }
                 } catch {
                     Write-Warning "  Could not parse $claudeSettingsPath — remove disabledMcpjsonServers manually."
