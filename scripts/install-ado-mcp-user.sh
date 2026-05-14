@@ -195,7 +195,7 @@ process.stdout.write(get("organization") + "\n" + get("project") + "\n" + get("t
       [[ -z "$organization"  && -n "$_cfg_org" ]]     && organization="$_cfg_org"
       [[ -z "$project"       && -n "$_cfg_project" ]] && project="$_cfg_project"
       [[ -z "$team"          && -n "$_cfg_team" ]]    && team="$_cfg_team"
-      [[ -z "$docker_image"  && -n "$_cfg_docker" ]]  && docker_image="$_cfg_docker"
+      [[ -z "$docker_image" && -n "$_cfg_docker" && ! ( "$mode" == "npx" && $mode_explicit -eq 1 ) ]] && docker_image="$_cfg_docker"
       [[ $_auth_from_cli    -eq 0 && -z "$authentication" && -n "$_cfg_auth" ]]   && authentication="$_cfg_auth"
       [[ $_domains_from_cli -eq 0 && -z "$domains_csv"   && -n "$_cfg_domains" ]] && domains_csv="$_cfg_domains"
       existing_org="$_cfg_org"
