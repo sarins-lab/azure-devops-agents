@@ -62,9 +62,37 @@ restore_interactive_shell_path() {
 
 restore_interactive_shell_path
 
+require_node() {
+  if ! command -v node >/dev/null 2>&1; then
+    echo "Node.js 20 or later is required." >&2
+    exit 1
+  fi
+
+  local node_major
+  node_major="$(node -p 'Number(process.versions.node.split(".")[0])' 2>/dev/null || true)"
+  if ! [[ "$node_major" =~ ^[0-9]+$ ]] || (( node_major < 20 )); then
+    echo "Node.js 20 or later is required; found $(node --version 2>/dev/null || echo unknown)." >&2
+    exit 1
+  fi
+
+  if [[ -z "$docker_image" ]] && \
+     ! command -v mcp-server-azuredevops >/dev/null 2>&1 && \
+     ! command -v npx >/dev/null 2>&1 && \
+     ! command -v npm >/dev/null 2>&1; then
+    echo "Non-Docker MCP mode requires mcp-server-azuredevops or npx at runtime. npm is accepted here because the installer will add the global binary via npm install. Install Node.js 20+ with npm, or install @azure-devops/mcp globally." >&2
+    exit 1
+  fi
+}
+
 organization="${ADO_MCP_ORG:-}"
-authentication="${ADO_MCP_AUTHENTICATION:-azcli}"
-domains_csv="${ADO_MCP_DOMAINS:-core,work,work-items,repositories,wiki}"
+authentication="${ADO_MCP_AUTHENTICATION:-}"
+domains_csv="${ADO_MCP_DOMAINS:-}"
+_auth_from_cli=0
+_domains_from_cli=0
+existing_docker=""
+existing_org=""
+existing_project=""
+existing_team=""
 project="${ADO_MCP_PROJECT:-}"
 team="${ADO_MCP_TEAM:-}"
 docker_image="${ADO_MCP_DOCKER_IMAGE:-}"
@@ -103,10 +131,12 @@ while [[ $# -gt 0 ]]; do
       ;;
     --authentication)
       authentication="${2:-}"
+      _auth_from_cli=1
       shift 2
       ;;
     --domains)
       domains_csv="${2:-}"
+      _domains_from_cli=1
       shift 2
       ;;
     --project)
@@ -144,6 +174,42 @@ while [[ $# -gt 0 ]]; do
       ;;
   esac
 done
+
+# Fall back to an existing ~/.ado-mcp/config.json so re-installs work without args.
+_ado_existing_config="${ADO_MCP_HOME:-$HOME}/.ado-mcp/config.json"
+if [[ -f "$_ado_existing_config" ]] && command -v node >/dev/null 2>&1; then
+  if _ado_cfg="$(node -e '
+const fs = require("fs");
+const raw = fs.readFileSync(process.argv[1], "utf8").trim();
+if (!raw) process.exit(0);
+const d = JSON.parse(raw);
+const get = k => { const v = d[k]; return v !== undefined && v !== null ? Array.isArray(v) ? v.join(",") : String(v) : ""; };
+process.stdout.write(get("organization") + "\n" + get("project") + "\n" + get("team") + "\n" + get("dockerImage") + "\n" + get("authentication") + "\n" + get("domains") + "\n");
+' "$_ado_existing_config" 2>/dev/null)"; then
+    if [[ -n "$_ado_cfg" ]]; then
+      { IFS= read -r _cfg_org; IFS= read -r _cfg_project; IFS= read -r _cfg_team; IFS= read -r _cfg_docker; IFS= read -r _cfg_auth; IFS= read -r _cfg_domains; } <<< "$_ado_cfg" || true
+      [[ -z "$organization"  && -n "$_cfg_org" ]]     && organization="$_cfg_org"
+      [[ -z "$project"       && -n "$_cfg_project" ]] && project="$_cfg_project"
+      [[ -z "$team"          && -n "$_cfg_team" ]]    && team="$_cfg_team"
+      [[ -z "$docker_image"  && -n "$_cfg_docker" ]]  && docker_image="$_cfg_docker"
+      [[ $_auth_from_cli    -eq 0 && -z "$authentication" && -n "$_cfg_auth" ]]   && authentication="$_cfg_auth"
+      [[ $_domains_from_cli -eq 0 && -z "$domains_csv"   && -n "$_cfg_domains" ]] && domains_csv="$_cfg_domains"
+      existing_org="$_cfg_org"
+      existing_project="$_cfg_project"
+      existing_team="$_cfg_team"
+      existing_docker="$_cfg_docker"
+      unset _cfg_org _cfg_project _cfg_team _cfg_docker _cfg_auth _cfg_domains
+    fi
+  else
+    echo "Warning: could not parse existing config $_ado_existing_config — run with --organization to reconfigure." >&2
+  fi
+  unset _ado_cfg
+fi
+unset _ado_existing_config
+[[ $_auth_from_cli    -eq 0 && -z "$authentication" ]] && authentication="azcli"
+[[ $_domains_from_cli -eq 0 && -z "$domains_csv" ]]    && domains_csv="core,work,work-items,repositories,wiki"
+unset _auth_from_cli _domains_from_cli
+require_node
 
 if [[ -z "$organization" ]]; then
   echo "Azure DevOps organization is required. Pass --organization <org> or set ADO_MCP_ORG." >&2
@@ -188,45 +254,6 @@ for client in "${clients[@]}"; do
   esac
 done
 
-require_node() {
-  if ! command -v node >/dev/null 2>&1; then
-    echo "Node.js 20 or later is required." >&2
-    exit 1
-  fi
-
-  local node_major
-  node_major="$(node -p 'Number(process.versions.node.split(".")[0])' 2>/dev/null || true)"
-  if ! [[ "$node_major" =~ ^[0-9]+$ ]] || (( node_major < 20 )); then
-    echo "Node.js 20 or later is required; found $(node --version 2>/dev/null || echo unknown)." >&2
-    exit 1
-  fi
-
-  if [[ -z "$docker_image" ]] && \
-     ! command -v mcp-server-azuredevops >/dev/null 2>&1 && \
-     ! command -v npx >/dev/null 2>&1; then
-    echo "Non-Docker MCP mode requires either a global mcp-server-azuredevops binary or npx. Install npm with Node.js 20+ or install @azure-devops/mcp globally." >&2
-    exit 1
-  fi
-}
-
-json_get() {
-  local file="$1"
-  local key="$2"
-  require_node
-  node -e '
-const fs = require("fs");
-const file = process.argv[1];
-const key = process.argv[2];
-if (!fs.existsSync(file)) process.exit(0);
-const raw = fs.readFileSync(file, "utf8").trim();
-if (!raw) process.exit(0);
-const value = JSON.parse(raw)[key];
-if (value === undefined || value === null) process.exit(0);
-if (Array.isArray(value)) console.log(value.join(","));
-else console.log(String(value));
-' "$file" "$key"
-}
-
 toml_string() {
   local value="${1//\\/\\\\}"
   value="${value//\"/\\\"}"
@@ -249,7 +276,6 @@ merge_markdown_block() {
   local marker="$2"
   local content_file="$3"
   local force_flag="$4"
-  require_node
   mkdir -p "$(dirname "$path")"
   node - "$path" "$marker" "$content_file" "$force_flag" <<'NODE'
 const fs = require("fs");
@@ -283,7 +309,6 @@ merge_vscode_json() {
   local launcher_path="$3"
   local context_path="$4"
   local force_flag="$5"
-  require_node
   mkdir -p "$(dirname "$mcp_path")" "$(dirname "$settings_path")"
   node - "$mcp_path" "$settings_path" "$launcher_path" "$context_path" "$force_flag" <<'NODE'
 const fs = require("fs");
@@ -427,7 +452,6 @@ NODE
 remove_legacy_vscode_prompts() {
   local settings_path="$1"
   local prompt_path="$2"
-  require_node
   node - "$settings_path" "$prompt_path" <<'NODE'
 const fs = require("fs");
 const [settingsPath, promptPath] = process.argv.slice(2);
@@ -484,7 +508,6 @@ write_codex_toml() {
   local codex_toml="$1"
   local launcher_path="$2"
   local force_flag="$3"
-  require_node
   mkdir -p "$(dirname "$codex_toml")"
   local block
   block="$(printf '\n[mcp_servers.azure-devops]\ncommand = "bash"\nargs = [%s]\n' "$(toml_string "$launcher_path")")"
@@ -534,9 +557,25 @@ install_global_mcp_if_missing() {
 
   if command -v npm >/dev/null 2>&1; then
     echo "Installing @azure-devops/mcp globally..."
-    npm install -g @azure-devops/mcp --silent || echo "WARN: global npm install failed - launcher will fall back to npx." >&2
+    if npm install -g @azure-devops/mcp --silent; then
+      local _npm_prefix _npm_bin
+      _npm_prefix="$(npm prefix -g 2>/dev/null || true)"
+      if [[ -n "$_npm_prefix" ]]; then
+        _npm_bin="$_npm_prefix/bin"
+        if [[ -d "$_npm_bin" ]]; then
+          case ":$PATH:" in *":$_npm_bin:"*) ;; *) PATH="$_npm_bin:$PATH"; export PATH ;; esac
+        fi
+      fi
+    else
+      echo "WARN: global npm install failed - launcher will fall back to npx." >&2
+    fi
   else
     echo "WARN: npm not found - skipping global install; launcher will use npx." >&2
+  fi
+
+  if ! command -v mcp-server-azuredevops >/dev/null 2>&1 && ! command -v npx >/dev/null 2>&1; then
+    echo "No runnable MCP entrypoint: mcp-server-azuredevops and npx are both unavailable. Install npm with Node.js 20+ or install @azure-devops/mcp globally, then retry." >&2
+    exit 1
   fi
 }
 
@@ -742,23 +781,6 @@ LAUNCHER
 chmod 700 "$launcher_target"
 echo "Wrote online MCP launcher: $launcher_target"
 
-existing_docker=""
-existing_org=""
-existing_project=""
-existing_team=""
-if [[ -f "$config_target" ]]; then
-  existing_docker="$(json_get "$config_target" "dockerImage" || true)"
-  existing_org="$(json_get "$config_target" "organization" || true)"
-  existing_project="$(json_get "$config_target" "project" || true)"
-  existing_team="$(json_get "$config_target" "team" || true)"
-fi
-
-if [[ -z "$project" ]]; then
-  project="$existing_project"
-fi
-if [[ -z "$team" ]]; then
-  team="$existing_team"
-fi
 if [[ -z "$project" && -t 0 ]]; then
   read -r -p "Default Azure DevOps project (optional; repo .ado-mcp.json overrides): " project
 fi
@@ -781,7 +803,6 @@ else
     config_authentication="envvar"
   fi
 
-  require_node
   node - "$config_target" "$organization" "$config_authentication" "$domains_csv" "$docker_image" "$project" "$team" <<'NODE'
 const fs = require("fs");
 const [path, organization, authentication, domainsCsv, dockerImage, project, team] = process.argv.slice(2);
@@ -801,8 +822,8 @@ fi
 
 if (( config_changed != 0 || force != 0 )); then
   install_global_mcp_if_missing
-elif [[ "$mode" == "npx" ]]; then
-  echo "Global @azure-devops/mcp install check skipped because MCP config already matches. Use --force to retry."
+elif [[ -z "$docker_image" ]]; then
+  install_global_mcp_if_missing
 fi
 
 if [[ -n "$docker_image" && -n "$auth_token" ]]; then

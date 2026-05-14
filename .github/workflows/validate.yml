@@ -10,6 +10,12 @@ permissions:
   contents: read
 
 jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: No build required
+        run: echo "This repo contains scripts and plugins only — no compiled artifacts."
+
   plugin:
     runs-on: ubuntu-latest
     steps:

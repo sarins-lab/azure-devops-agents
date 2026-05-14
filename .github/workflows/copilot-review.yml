@@ -1,0 +1,17 @@
+name: Auto Request Review from Copilot
+
+on:
+  pull_request:
+    types: [opened, reopened]
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+      issues: write
+    steps:
+      - name: Request review from Copilot
+        run: gh pr comment ${{ github.event.pull_request.number }} --repo ${{ github.repository }} --body "@copilot review"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
