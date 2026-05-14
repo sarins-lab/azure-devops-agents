@@ -676,12 +676,6 @@ existing_docker="${existing_docker:-}"
 existing_org="${existing_org:-}"
 existing_project="${existing_project:-}"
 existing_team="${existing_team:-}"
-if [[ -f "$config_target" && "${_ado_cfg_preloaded:-0}" -eq 0 ]]; then
-  existing_docker="$(json_get "$config_target" "dockerImage" || true)"
-  existing_org="$(json_get "$config_target" "organization" || true)"
-  existing_project="$(json_get "$config_target" "project" || true)"
-  existing_team="$(json_get "$config_target" "team" || true)"
-fi
 unset _ado_cfg_preloaded
 
 if [[ -z "$project" ]]; then
