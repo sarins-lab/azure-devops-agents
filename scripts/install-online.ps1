@@ -510,80 +510,18 @@ if ($mcpBin) {
 exit $LASTEXITCODE
 '@
 
-$McpRules = @'
-# Azure DevOps MCP Tooling
-
-Use Microsoft's official `@azure-devops/mcp` package through the `azure-devops` MCP server.
-
-Tool names use the `mcp_ado_*` naming pattern.
-
-Use RUP-style SDLC concepts as the planning model: Stakeholder Request, Functional Requirement, Non-Functional Requirement, UX Artifact, Technical Requirement, Architecture, Technical Documentation, Delivery Slice, and Task.
-
-Architecture must be cohesive: boundaries, components, runtime flows, deployment, data, security, operations, decisions, tradeoffs, and open questions. Mermaid diagrams for Azure DevOps wiki must use ::: mermaid blocks, graph TD; or graph LR; for flowcharts, simple node IDs, quoted ASCII labels, no HTML, no Markdown labels, no angle-bracket placeholders, no raw Unicode symbols, and no GitHub-style Mermaid code fences.
-
-Before writing, call `mcp_ado_wit_list_backlogs` and `mcp_ado_wit_get_work_item_type` to derive the active Azure DevOps process profile.
-
-`mcp_ado_wit_add_child_work_items` creates child work items and parent links. It supports title, description, area path, iteration path, and Markdown/HTML format.
-
-It does not set Acceptance Criteria, Story Points, Effort, Size, Requirement Type, Tags, or custom fields. Add those afterward with `mcp_ado_wit_update_work_item` only when the target work item type exposes those fields.
-
-Use `mcp_ado_wit_work_items_link` only to repair or add links after creation.
-
-For backlog lookup, call `mcp_ado_wit_list_backlogs` first, then call `mcp_ado_wit_list_backlog_work_items` with `project`, `team`, and `backlogId`.
-
-For wiki lookup, use `mcp_ado_wiki_list_wikis`, `mcp_ado_wiki_list_pages`, `mcp_ado_wiki_get_page`, and `mcp_ado_wiki_get_page_content`.
-'@
-
-$CodexContext = @'
-# Azure DevOps RUP Planning
-
-The `azure-devops` MCP server is configured at user level via `~/.codex/config.toml`.
-The installer stores a default `project` and optional `team` in `~/.ado-mcp/config.json`. Place `.ado-mcp.json` in any repo root to override `project` and `team`; the launcher injects the resolved values automatically.
-
-Plan using RUP-style concepts: Stakeholder Request, Functional Requirement, Non-Functional Requirement, UX Artifact, Technical Requirement, Architecture, Technical Documentation, Delivery Slice, and Task.
-
-Preferred routes: `/capture-request`, `/define-requirements`, `/design-ux`, `/plan-requirement`, `/document-solution`, `/plan-delivery`, `/plan-task`.
-
-Natural planning phrases such as "I want to", "we need to", "setup", "build", "design", "implement", "secure", "expose", "document", "diagram", and "break down" should trigger planning even when Azure DevOps or RUP is not mentioned.
-
-Before implementation, repository edits, deployment, or configuration work starts, verify traceability to an existing approved Azure DevOps work item or confirmed RUP planning artifact. If the requested work is not already represented in Azure DevOps, capture it as a new Stakeholder Request or Change Request and run the SDLC workflow first. User-facing work must include UX or an explicit UX-not-applicable decision.
-
-Architecture must be cohesive, not a technology list. Technical documentation must not introduce architecture decisions. Mermaid diagrams for Azure DevOps wiki must use ::: mermaid blocks, graph TD; or graph LR; for flowcharts, simple node IDs, quoted ASCII labels, no HTML, no Markdown labels, no angle-bracket placeholders, no raw Unicode symbols, and no GitHub-style Mermaid code fences.
-
-Do not create Azure DevOps work items until the user confirms the plan.
-'@
-
-$ClaudeContext = @'
-# Azure DevOps RUP Planning
-
-Use the `azure-devops` MCP server for Azure DevOps planning work. The installer stores a default `project` and optional `team` in `~/.ado-mcp/config.json`. Place `.ado-mcp.json` in any repo root to override `project` and `team`; the launcher injects the resolved values automatically.
-
-Plan using RUP-style concepts: Stakeholder Request, Functional Requirement, Non-Functional Requirement, UX Artifact, Technical Requirement, Architecture, Technical Documentation, Delivery Slice, and Task.
-
-Natural planning phrases such as "I want to", "we need to", "setup", "build", "design", "implement", "secure", "expose", "document", "diagram", and "break down" should trigger planning even when Azure DevOps or RUP is not mentioned.
-
-Before implementation, repository edits, deployment, or configuration work starts, verify traceability to an existing approved Azure DevOps work item or confirmed RUP planning artifact. If the requested work is not already represented in Azure DevOps, capture it as a new Stakeholder Request or Change Request and run the SDLC workflow first. User-facing work must include UX or an explicit UX-not-applicable decision.
-
-Architecture must be cohesive, not a technology list. Technical documentation must not introduce architecture decisions. Mermaid diagrams for Azure DevOps wiki must use ::: mermaid blocks, graph TD; or graph LR; for flowcharts, simple node IDs, quoted ASCII labels, no HTML, no Markdown labels, no angle-bracket placeholders, no raw Unicode symbols, and no GitHub-style Mermaid code fences.
-
-Pause after each SDLC role phase. Never create Azure DevOps work items until the user confirms the plan.
-'@
-
-$CopilotContext = @'
-# Azure DevOps RUP Planning
-
-Use the `azure-devops` MCP server for all Azure DevOps operations. The installer stores a default project and optional team in `~/.ado-mcp/config.json`; the launcher reads `.ado-mcp.json` from the repo root to override those values when present.
-
-Plan using RUP-style concepts: Stakeholder Request, Functional Requirement, Non-Functional Requirement, UX Artifact, Technical Requirement, Architecture, Technical Documentation, Delivery Slice, and Task.
-
-Recognize `/capture-request`, `/define-requirements`, `/design-ux`, `/plan-requirement`, `/document-solution`, `/plan-delivery`, `/plan-task`, and natural planning intent.
-
-Natural planning phrases such as "I want to", "we need to", "setup", "build", "design", "implement", "secure", "expose", "document", "diagram", and "break down" should trigger planning even when Azure DevOps or RUP is not mentioned.
-
-Before implementation, repository edits, deployment, or configuration work starts, verify traceability to an existing approved Azure DevOps work item or confirmed RUP planning artifact. If the requested work is not already represented in Azure DevOps, capture it as a new Stakeholder Request or Change Request and run the SDLC workflow first. User-facing work must include UX or an explicit UX-not-applicable decision.
-
-Architecture must be cohesive, not a technology list. Technical documentation must not introduce architecture decisions. Mermaid diagrams for Azure DevOps wiki must use ::: mermaid blocks, graph TD; or graph LR; for flowcharts, simple node IDs, quoted ASCII labels, no HTML, no Markdown labels, no angle-bracket placeholders, no raw Unicode symbols, and no GitHub-style Mermaid code fences.
-'@
+function Get-RemoteJoinedContent {
+    param([string[]]$Paths)
+    $rawBase = "https://raw.githubusercontent.com/sarins-lab/azure-devops-agents/main"
+    $parts = @()
+    foreach ($path in $Paths) {
+        $content = (Invoke-WebRequest -Uri "$rawBase/$path" -UseBasicParsing).Content.TrimEnd()
+        if (-not [string]::IsNullOrWhiteSpace($content)) {
+            $parts += $content
+        }
+    }
+    return [string]::Join("`n`n", $parts)
+}
 
 function Join-TextSections {
     param([string[]]$Sections)
@@ -847,9 +785,9 @@ $launcherTarget = Join-Path $adoHome "ado-mcp.ps1"
 $configTarget = Join-Path $adoHome "config.json"
 $copilotTarget = Join-Path $adoHome "copilot-context.md"
 
-$codexContextBlock = Join-TextSections -Sections @($CodexContext, $McpRules)
-$claudeContextBlock = Join-TextSections -Sections @($ClaudeContext, $McpRules)
-$copilotContextFile = Join-TextSections -Sections @($CopilotContext, $McpRules)
+$codexContextBlock  = Get-RemoteJoinedContent -Paths @("plugins/azure-devops-agents-codex/AGENTS.md",   "shared/workflows/rup-planning.md", "shared/mcp/azure-devops-tools.md")
+$claudeContextBlock = Get-RemoteJoinedContent -Paths @("plugins/azure-devops-agents-claude/CLAUDE.md",  "shared/workflows/rup-planning.md", "shared/mcp/azure-devops-tools.md")
+$copilotContextFile = Get-RemoteJoinedContent -Paths @("plugins/azure-devops-agents-vscode/copilot-instructions.md", "shared/workflows/rup-planning.md", "shared/mcp/azure-devops-tools.md")
 
 New-Item -ItemType Directory -Force -Path $adoHome | Out-Null
 Write-Utf8NoBomFile -Path $launcherTarget -Value ($LauncherScript.TrimEnd() + "`n") -NoNewline
