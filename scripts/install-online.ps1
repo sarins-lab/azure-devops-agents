@@ -785,10 +785,6 @@ $launcherTarget = Join-Path $adoHome "ado-mcp.ps1"
 $configTarget = Join-Path $adoHome "config.json"
 $copilotTarget = Join-Path $adoHome "copilot-context.md"
 
-$codexContextBlock  = Get-RemoteJoinedContent -Paths @("plugins/azure-devops-agents-codex/AGENTS.md",   "shared/workflows/rup-planning.md", "shared/mcp/azure-devops-tools.md")
-$claudeContextBlock = Get-RemoteJoinedContent -Paths @("plugins/azure-devops-agents-claude/CLAUDE.md",  "shared/workflows/rup-planning.md", "shared/mcp/azure-devops-tools.md")
-$copilotContextFile = Get-RemoteJoinedContent -Paths @("plugins/azure-devops-agents-vscode/copilot-instructions.md", "shared/workflows/rup-planning.md", "shared/mcp/azure-devops-tools.md")
-
 New-Item -ItemType Directory -Force -Path $adoHome | Out-Null
 Write-Utf8NoBomFile -Path $launcherTarget -Value ($LauncherScript.TrimEnd() + "`n") -NoNewline
 Write-Host "Wrote online MCP launcher: $launcherTarget"
@@ -890,6 +886,7 @@ if ($configureCodexNow) {
         Write-Host "  Configured Codex MCP: $codexToml"
     }
 
+    $codexContextBlock = Get-RemoteJoinedContent -Paths @("plugins/azure-devops-agents-codex/AGENTS.md", "shared/workflows/rup-planning.md", "shared/mcp/azure-devops-tools.md")
     Merge-MarkdownBlock -Path (Join-Path $codexDir "AGENTS.md") -MarkerName "azure-devops-agents" -Content $codexContextBlock
 }
 
@@ -905,6 +902,7 @@ if ($configureVSCodeNow) {
     $vsCodeSettingsPath = Join-Path $vsCodeUserDir "settings.json"
     $legacyPromptDir = Join-Path $adoHome "prompts"
 
+    $copilotContextFile = Get-RemoteJoinedContent -Paths @("plugins/azure-devops-agents-vscode/copilot-instructions.md", "shared/workflows/rup-planning.md", "shared/mcp/azure-devops-tools.md")
     Write-Utf8NoBomFile -Path $copilotTarget -Value ($copilotContextFile.TrimEnd() + "`n") -NoNewline
 
     Merge-VSCodeMcpServer -Path $vsCodeMcpPath -LauncherPath $launcherTarget
@@ -972,12 +970,14 @@ if ($configureClaudeNow) {
             $claudeSettingsPath = Join-Path $userHome ".claude\settings.json"
             if (Test-Path -LiteralPath $claudeSettingsPath) {
                 try {
-                    $settings = Get-Content -LiteralPath $claudeSettingsPath -Raw | ConvertFrom-Json
+                    $rawSettings = Get-Content -LiteralPath $claudeSettingsPath -Raw
+                    $settings = ConvertFrom-JsonOrJsonC -Content $rawSettings -Path $claudeSettingsPath
                     $disabled = $settings.PSObject.Properties["disabledMcpjsonServers"]
                     if ($null -ne $disabled -and $disabled.Value -contains "azure-devops") {
                         $filtered = @($disabled.Value | Where-Object { $_ -ne "azure-devops" })
                         if ($filtered.Count -eq 0) { $settings.PSObject.Properties.Remove("disabledMcpjsonServers") }
                         else { $disabled.Value = $filtered }
+                        Backup-FileBeforeJsonRewrite -Path $claudeSettingsPath
                         Write-Utf8NoBomFile -Path $claudeSettingsPath -Value (($settings | ConvertTo-Json -Depth 12) + "`n") -NoNewline
                         Write-Host "  Enabled plugin MCP server in Claude settings: $claudeSettingsPath"
                     }
@@ -988,6 +988,7 @@ if ($configureClaudeNow) {
         }
     }
 
+    $claudeContextBlock = Get-RemoteJoinedContent -Paths @("plugins/azure-devops-agents-claude/CLAUDE.md", "shared/workflows/rup-planning.md", "shared/mcp/azure-devops-tools.md")
     Merge-MarkdownBlock -Path (Join-Path $userHome ".claude\CLAUDE.md") -MarkerName "azure-devops-agents" -Content $claudeContextBlock
 }
 

@@ -272,10 +272,25 @@ enable_plugin_mcp_json_server() {
   node - "$settings_path" "$server_name" <<'NODE'
 const fs = require("fs");
 const [settingsPath, serverName] = process.argv.slice(2);
+function stripJsonc(s) {
+  let o = "", inStr = false, esc = false;
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i], n = s[i+1];
+    if (esc) { o += c; esc = false; continue; }
+    if (inStr && c === "\\") { o += c; esc = true; continue; }
+    if (c === '"') { inStr = !inStr; o += c; continue; }
+    if (inStr) { o += c; continue; }
+    if (c === "/" && n === "/") { while (i < s.length && s[i] !== "\n") i++; continue; }
+    if (c === "/" && n === "*") { i += 2; while (i < s.length && !(s[i] === "*" && s[i+1] === "/")) i++; i++; continue; }
+    o += c;
+  }
+  return o.replace(/,(\s*[}\]])/g, "$1");
+}
 try {
   const raw = fs.readFileSync(settingsPath, "utf8").trim();
   if (!raw) process.exit(0);
-  const json = JSON.parse(raw);
+  let json;
+  try { json = JSON.parse(raw); } catch { json = JSON.parse(stripJsonc(raw)); }
   if (!Array.isArray(json.disabledMcpjsonServers) || !json.disabledMcpjsonServers.includes(serverName)) {
     process.exit(0);
   }
@@ -850,8 +865,12 @@ fi
 
 if (( config_changed != 0 || force != 0 )); then
   install_global_mcp_if_missing
-elif [[ -z "$docker_image" ]]; then
+elif [[ -z "$docker_image" ]] && \
+     ! command -v mcp-server-azuredevops >/dev/null 2>&1 && \
+     ! command -v npx >/dev/null 2>&1; then
   install_global_mcp_if_missing
+elif [[ -z "$docker_image" ]]; then
+  echo "Global @azure-devops/mcp install check skipped because MCP config already matches. Use --force to retry."
 fi
 
 if [[ -n "$docker_image" && -n "$auth_token" ]]; then
@@ -861,8 +880,8 @@ if [[ -n "$docker_image" && -n "$auth_token" ]]; then
   echo "Stored ADO_MCP_AUTH_TOKEN in $env_target for Docker MCP mode."
 fi
 
-_raw="https://raw.githubusercontent.com/sarins-lab/azure-devops-agents/main"
 _join_remote() {
+  local _raw="https://raw.githubusercontent.com/sarins-lab/azure-devops-agents/main"
   local out="$1"; shift
   local first=1
   for _f in "$@"; do
@@ -870,23 +889,15 @@ _join_remote() {
     curl -fsSL "$_raw/$_f" >> "$out"
     first=0
   done
+  unset _raw _f
 }
-_join_remote "$codex_context" \
-  "plugins/azure-devops-agents-codex/AGENTS.md" \
-  "shared/workflows/rup-planning.md" \
-  "shared/mcp/azure-devops-tools.md"
-_join_remote "$claude_context" \
-  "plugins/azure-devops-agents-claude/CLAUDE.md" \
-  "shared/workflows/rup-planning.md" \
-  "shared/mcp/azure-devops-tools.md"
-_join_remote "$copilot_context" \
-  "plugins/azure-devops-agents-vscode/copilot-instructions.md" \
-  "shared/workflows/rup-planning.md" \
-  "shared/mcp/azure-devops-tools.md"
-unset _raw _f _join_remote
 
 if [[ $configure_codex -eq 1 ]]; then
   echo "Configuring Codex..."
+  _join_remote "$codex_context" \
+    "plugins/azure-devops-agents-codex/AGENTS.md" \
+    "shared/workflows/rup-planning.md" \
+    "shared/mcp/azure-devops-tools.md"
   codex_dir="$user_home/.codex"
   write_codex_toml "$codex_dir/config.toml" "$launcher_target" "$force"
   merge_markdown_block "$codex_dir/AGENTS.md" "azure-devops-agents" "$codex_context" "$force"
@@ -894,6 +905,10 @@ fi
 
 if [[ $configure_vscode -eq 1 ]]; then
   echo "Configuring VS Code..."
+  _join_remote "$copilot_context" \
+    "plugins/azure-devops-agents-vscode/copilot-instructions.md" \
+    "shared/workflows/rup-planning.md" \
+    "shared/mcp/azure-devops-tools.md"
   cp "$copilot_context" "$copilot_target"
 
   vs_code_dir="$(vscode_user_dir)"
@@ -908,13 +923,13 @@ if [[ $configure_claude -eq 1 ]]; then
   _raw="https://raw.githubusercontent.com/sarins-lab/azure-devops-agents/main"
 
   echo "  Downloading plugin files from GitHub..."
-  mkdir -p "$plugin_dir/.claude-plugin" "$plugin_dir/scripts" "$plugin_dir/agents"
   _dl_ok=1
   for _file in \
     ".claude-plugin/plugin.json" \
     ".claude-plugin/marketplace.json" \
     ".mcp.json" \
     "scripts/ado-mcp-launcher.mjs" \
+    "scripts/ado-mcp-launcher.sh" \
     "agents/stakeholder-analyst-agent.md" \
     "agents/requirements-analyst-agent.md" \
     "agents/ux-designer-agent.md" \
@@ -922,14 +937,17 @@ if [[ $configure_claude -eq 1 ]]; then
     "agents/technical-writer-agent.md" \
     "agents/delivery-planner-agent.md" \
     "agents/implementation-lead-agent.md"; do
+    mkdir -p "$(dirname "$plugin_dir/$_file")"
     if ! curl -fsSL "$_raw/$_file" -o "$plugin_dir/$_file"; then
       echo "  WARN: failed to download $_file — skipping Claude plugin install." >&2
       _dl_ok=0
       break
     fi
   done
+  [[ -f "$plugin_dir/scripts/ado-mcp-launcher.sh" ]] && chmod 700 "$plugin_dir/scripts/ado-mcp-launcher.sh"
   unset _raw _file
 
+  claude_plugin_installed=0
   if [[ "${_dl_ok:-0}" -eq 1 ]]; then
     unset _dl_ok
     if ! command -v claude >/dev/null 2>&1; then
@@ -937,7 +955,7 @@ if [[ $configure_claude -eq 1 ]]; then
       echo "    claude plugin marketplace add --scope user \"$plugin_dir\""
       echo "    claude plugin install --scope user azure-devops-agents-claude@azure-devops-agents"
     else
-      if claude plugin marketplace list | grep -Eq '^[[:space:]]*>[[:space:]]+azure-devops-agents[[:space:]]*$'; then
+      if claude plugin marketplace list | grep -Eq '^[[:space:]]*>[[:space:]]+azure-devops-agents([[:space:]]|$)'; then
         echo "  Claude marketplace already registered: azure-devops-agents"
       else
         claude plugin marketplace add --scope user "$plugin_dir"
@@ -950,16 +968,26 @@ if [[ $configure_claude -eq 1 ]]; then
         echo "  Installed Claude plugin: azure-devops-agents-claude"
       fi
       enable_plugin_mcp_json_server "$user_home/.claude/settings.json" "azure-devops"
+      claude_plugin_installed=1
     fi
   fi
 
+  _join_remote "$claude_context" \
+    "plugins/azure-devops-agents-claude/CLAUDE.md" \
+    "shared/workflows/rup-planning.md" \
+    "shared/mcp/azure-devops-tools.md"
   merge_markdown_block "$user_home/.claude/CLAUDE.md" "azure-devops-agents" "$claude_context" "$force"
 fi
+unset -f _join_remote
 
 echo
 echo "Done. Client summary:"
 if [[ $configure_claude -eq 1 ]]; then
-  echo "  Claude Code : plugin installed + ~/.claude/CLAUDE.md updated"
+  if [[ ${claude_plugin_installed:-0} -eq 1 ]]; then
+    echo "  Claude Code : plugin installed + ~/.claude/CLAUDE.md updated"
+  else
+    echo "  Claude Code : ~/.claude/CLAUDE.md updated (plugin install pending — Claude CLI missing or download failed)"
+  fi
 fi
 [[ $configure_codex -eq 1 ]] && echo "  Codex       : MCP registered + ~/.codex/AGENTS.md updated"
 [[ $configure_vscode -eq 1 ]] && echo "  VS Code     : MCP registered + Copilot instruction added"
