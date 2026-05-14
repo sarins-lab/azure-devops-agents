@@ -265,6 +265,34 @@ shell_quote() {
   printf "'%s'" "$(printf '%s' "$value" | sed "s/'/'\\\\''/g")"
 }
 
+enable_plugin_mcp_json_server() {
+  local settings_path="$1"
+  local server_name="$2"
+  [[ -f "$settings_path" ]] || return 0
+  node - "$settings_path" "$server_name" <<'NODE'
+const fs = require("fs");
+const [settingsPath, serverName] = process.argv.slice(2);
+try {
+  const raw = fs.readFileSync(settingsPath, "utf8").trim();
+  if (!raw) process.exit(0);
+  const json = JSON.parse(raw);
+  if (!Array.isArray(json.disabledMcpjsonServers) || !json.disabledMcpjsonServers.includes(serverName)) {
+    process.exit(0);
+  }
+  const filtered = json.disabledMcpjsonServers.filter((entry) => entry !== serverName);
+  if (filtered.length === 0) {
+    delete json.disabledMcpjsonServers;
+  } else {
+    json.disabledMcpjsonServers = filtered;
+  }
+  fs.writeFileSync(settingsPath, JSON.stringify(json, null, 2) + "\n", "utf8");
+  console.log(`  Enabled plugin .mcp.json server '${serverName}' in Claude settings: ${settingsPath}`);
+} catch (err) {
+  console.error(`  WARN: Could not parse ${settingsPath} — remove disabledMcpjsonServers manually. (${err.message})`);
+}
+NODE
+}
+
 write_file() {
   local path="$1"
   mkdir -p "$(dirname "$path")"
@@ -926,16 +954,47 @@ fi
 
 if [[ $configure_claude -eq 1 ]]; then
   echo "Configuring Claude Code..."
-  echo "  The online installer writes ~/.claude/CLAUDE.md only."
-  echo "  Installing the Claude plugin-owned MCP server requires a local repo checkout."
-  echo "  Use scripts/install.ps1 or scripts/install.sh from a clone to install azure-devops-agents-claude."
+
+  plugin_dir="$ado_home/plugin"
+  plugin_archive_url="https://github.com/sarins-lab/azure-devops-agents/archive/refs/heads/main.tar.gz"
+
+  echo "  Downloading plugin files from GitHub..."
+  mkdir -p "$plugin_dir"
+  if curl -fsSL "$plugin_archive_url" | tar -xz --strip-components=1 -C "$plugin_dir"; then
+    echo "  Plugin files downloaded: $plugin_dir"
+  else
+    echo "  WARN: failed to download plugin archive — skipping Claude plugin install." >&2
+  fi
+
+  if [[ -d "$plugin_dir/.claude-plugin" ]]; then
+    if ! command -v claude >/dev/null 2>&1; then
+      echo "  Claude CLI not found. Run manually after installing Claude Code:"
+      echo "    claude plugin marketplace add --scope user \"$plugin_dir\""
+      echo "    claude plugin install --scope user azure-devops-agents-claude@azure-devops-agents"
+    else
+      if claude plugin marketplace list | grep -Eq '^[[:space:]]*>[[:space:]]+azure-devops-agents[[:space:]]*$'; then
+        echo "  Claude marketplace already registered: azure-devops-agents"
+      else
+        claude plugin marketplace add --scope user "$plugin_dir"
+        echo "  Registered Claude marketplace: azure-devops-agents"
+      fi
+      if claude plugin list | grep -Eq 'azure-devops-agents-claude'; then
+        echo "  Claude plugin already installed: azure-devops-agents-claude"
+      else
+        claude plugin install --scope user azure-devops-agents-claude@azure-devops-agents
+        echo "  Installed Claude plugin: azure-devops-agents-claude"
+      fi
+      enable_plugin_mcp_json_server "$user_home/.claude/settings.json" "azure-devops"
+    fi
+  fi
+
   merge_markdown_block "$user_home/.claude/CLAUDE.md" "azure-devops-agents" "$claude_context" "$force"
 fi
 
 echo
 echo "Done. Client summary:"
 if [[ $configure_claude -eq 1 ]]; then
-  echo "  Claude Code : ~/.claude/CLAUDE.md updated (plugin install requires a local repo checkout)"
+  echo "  Claude Code : plugin installed + ~/.claude/CLAUDE.md updated"
 fi
 [[ $configure_codex -eq 1 ]] && echo "  Codex       : MCP registered + ~/.codex/AGENTS.md updated"
 [[ $configure_vscode -eq 1 ]] && echo "  VS Code     : MCP registered + Copilot instruction added"
