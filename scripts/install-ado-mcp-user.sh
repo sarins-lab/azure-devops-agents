@@ -79,7 +79,7 @@ require_node() {
      ! command -v mcp-server-azuredevops >/dev/null 2>&1 && \
      ! command -v npx >/dev/null 2>&1 && \
      ! command -v npm >/dev/null 2>&1; then
-    echo "Non-Docker MCP mode requires either a global mcp-server-azuredevops binary, npx, or npm. Install npm with Node.js 20+ or rerun with --mode docker." >&2
+    echo "Non-Docker MCP mode requires mcp-server-azuredevops or npx at runtime. npm is accepted here because the installer will add the global binary via npm install. Install Node.js 20+ with npm, or install @azure-devops/mcp globally, or rerun with --mode docker." >&2
     exit 1
   fi
 }
