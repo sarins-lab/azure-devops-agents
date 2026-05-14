@@ -282,9 +282,14 @@ function stripJsonc(s) {
     if (inStr) { o += c; continue; }
     if (c === "/" && n === "/") { while (i < s.length && s[i] !== "\n") i++; continue; }
     if (c === "/" && n === "*") { i += 2; while (i < s.length && !(s[i] === "*" && s[i+1] === "/")) i++; i++; continue; }
+    if (c === ",") {
+      let j = i + 1;
+      while (j < s.length && /\s/.test(s[j])) j++;
+      if (s[j] === "}" || s[j] === "]") continue;
+    }
     o += c;
   }
-  return o.replace(/,(\s*[}\]])/g, "$1");
+  return o;
 }
 try {
   const raw = fs.readFileSync(settingsPath, "utf8").trim();

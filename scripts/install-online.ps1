@@ -921,6 +921,7 @@ if ($configureClaudeNow) {
         ".claude-plugin/marketplace.json",
         ".mcp.json",
         "scripts/ado-mcp-launcher.mjs",
+        "scripts/ado-mcp-launcher.sh",
         "agents/stakeholder-analyst-agent.md",
         "agents/requirements-analyst-agent.md",
         "agents/ux-designer-agent.md",
