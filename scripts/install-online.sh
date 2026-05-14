@@ -183,7 +183,7 @@ const get = k => { const v = d[k]; return v !== undefined && v !== null ? Array.
 process.stdout.write(get("organization") + "\n" + get("project") + "\n" + get("team") + "\n" + get("dockerImage") + "\n" + get("authentication") + "\n" + get("domains") + "\n");
 ' "$_ado_existing_config" 2>/dev/null)"; then
     if [[ -n "$_ado_cfg" ]]; then
-      { read -r _cfg_org; read -r _cfg_project; read -r _cfg_team; read -r _cfg_docker; read -r _cfg_auth; read -r _cfg_domains; } <<< "$_ado_cfg"
+      { read -r _cfg_org; read -r _cfg_project; read -r _cfg_team; read -r _cfg_docker; read -r _cfg_auth; read -r _cfg_domains; } <<< "$_ado_cfg" || true
       [[ -z "$organization"  && -n "$_cfg_org" ]]     && organization="$_cfg_org"
       [[ -z "$project"       && -n "$_cfg_project" ]] && project="$_cfg_project"
       [[ -z "$team"          && -n "$_cfg_team" ]]    && team="$_cfg_team"
