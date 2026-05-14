@@ -614,6 +614,11 @@ install_global_mcp_if_missing() {
   else
     echo "WARN: npm not found - skipping global install; launcher will use npx." >&2
   fi
+
+  if ! command -v mcp-server-azuredevops >/dev/null 2>&1 && ! command -v npx >/dev/null 2>&1; then
+    echo "No runnable MCP entrypoint: mcp-server-azuredevops and npx are both unavailable. Install npm with Node.js 20+ or install @azure-devops/mcp globally, then retry." >&2
+    exit 1
+  fi
 }
 
 remove_claude_user_mcp_server() {
